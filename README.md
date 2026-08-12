@@ -64,6 +64,13 @@ On the laptop (macOS or Linux), pointing at the print server on `:6631`:
 
 ```bash
 lpadmin -p janus-office -E \
+    -v ipp://172.18.100.3:6631/printers/office-printer \
+    -m everywhere
+cupsenable janus-office && cupsaccept janus-office
+```
+
+```bash
+lpadmin -p janus-office -E \
   -v ipp://172.18.100.3:6631/printers/office-printer \
   -m everywhere
 cupsenable janus-office && cupsaccept janus-office
