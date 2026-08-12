@@ -116,6 +116,22 @@ def load_config():
 # --- device URI --------------------------------------------------------------
 
 
+def originating_host(options):
+    """Pull the workstation name out of argv[5].
+
+    CUPS does not put REMOTE_HOST in the backend's environment — it passes
+    job-originating-host-name inside the options string instead. Without this, every job
+    from every laptop is attributed to the print server rather than to the machine that
+    sent it, which makes the SOC trail nearly useless for a shared queue.
+    """
+    if not options:
+        return ""
+    for token in options.split():
+        if token.startswith("job-originating-host-name="):
+            return token.split("=", 1)[1].strip("'\"")
+    return ""
+
+
 def real_device_uri(device_uri):
     """janus://<scheme>/<rest> -> <scheme>://<rest>. Returns (scheme, uri)."""
     if not device_uri or not device_uri.startswith("janus://"):
@@ -289,7 +305,7 @@ def main(argv):
             "cups_job_id": job_id,
             "queue": queue,
             "username": username,
-            "hostname": os.environ.get("REMOTE_HOST", ""),
+            "hostname": originating_host(options) or os.environ.get("REMOTE_HOST", ""),
             "title": title,
             "copies": copies,
             "options": options,

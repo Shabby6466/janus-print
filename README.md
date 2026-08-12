@@ -55,6 +55,37 @@ lpadmin -p acct-laser -E -v janus://ipp/10.0.4.21/ipp/print -m everywhere
 Use driverless (`-m everywhere`) queues. They deliver PDF with an intact text layer;
 legacy PCL queues rasterize first, forcing OCR on every job.
 
+## Print from a workstation
+
+The lab's `client` container is a stand-in. Real workstations point at the same CUPS queue
+and take the identical path — backend, inspector, verdict, hold or release.
+
+On the laptop (macOS or Linux), pointing at the print server on `:6631`:
+
+```bash
+lpadmin -p janus-office -E \
+  -v ipp://172.18.100.3:6631/printers/office-printer \
+  -m everywhere
+cupsenable janus-office && cupsaccept janus-office
+lp -d janus-office some.pdf
+```
+
+macOS GUI equivalent: **Settings → Printers & Scanners → Add → IP**, address
+`172.18.100.3:6631`, queue `printers/office-printer`, protocol **IPP**.
+
+Prefer `-m everywhere` on the client too. Driverless clients send PDF, which keeps the text
+layer intact; a client with a PostScript PPD converts first and forces a ghostscript pass on
+the server for every job.
+
+**Workstation attribution** comes from `job-originating-host-name`, which CUPS passes in the
+backend's options argument — it does *not* set `REMOTE_HOST`. Reading the wrong one
+attributes every laptop's job to the print server itself and makes the audit trail useless
+on a shared queue. It lands in the CEF event as `shost=`.
+
+Note that `docker/cups/cupsd.conf` currently allows submission and administration from
+anywhere. That is fine on an isolated compose network and wrong on a real LAN — restrict
+the `<Location />` and `<Location /admin>` blocks to your client subnet before rollout.
+
 ## What is built
 
 **Interception** — `backend/janus`, stdlib-only, ~330 lines. Never raises, fails open by

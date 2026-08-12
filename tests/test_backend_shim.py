@@ -198,3 +198,28 @@ class TestFailureBehaviour:
                 lambda *_a, action=action: {"action": action, "reason": "test", "score": 0.9},
             )
             assert shim.main([*self._argv(), str(spool)]) == expected, action
+
+
+class TestWorkstationAttribution:
+    """CUPS does not set REMOTE_HOST for backends — it puts job-originating-host-name in
+    the options string. Getting this wrong attributes every laptop's job to the print
+    server itself."""
+
+    def test_hostname_is_parsed_from_options(self, shim):
+        options = (
+            "finishings=3 number-up=1 print-color-mode=monochrome "
+            "job-uuid=urn:uuid:e1fa6e8e job-originating-host-name=WS-4471.corp.local "
+            "time-at-creation=1786545508"
+        )
+        assert shim.originating_host(options) == "WS-4471.corp.local"
+
+    def test_quoted_hostname(self, shim):
+        assert shim.originating_host("job-originating-host-name='WS-4471'") == "WS-4471"
+
+    def test_ip_address_workstations(self, shim):
+        assert shim.originating_host("job-originating-host-name=172.19.0.9") == "172.19.0.9"
+
+    def test_missing_attribute_is_empty_not_an_error(self, shim):
+        assert shim.originating_host("number-up=1") == ""
+        assert shim.originating_host("") == ""
+        assert shim.originating_host(None) == ""
