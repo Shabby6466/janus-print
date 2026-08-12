@@ -1,0 +1,65 @@
+# Per-queue policy. Edited by operators, not deployers — this file is the product.
+#
+# deep_scan_required   what happens when a page has no text layer (a scan, a screenshot).
+#                      true  -> hold the job until OCR clears it. The user waits seconds.
+#                      false -> print now, OCR in the background, raise an incident if it
+#                               hits. You cannot unprint, but you get the audit trail.
+#
+# fail_mode            what happens when the inspector is down or over deadline.
+#                      open   -> print anyway, log a coverage gap, alert the SIEM.
+#                      closed -> hold the job.
+#                      Default open on purpose: an inspector outage that halts every
+#                      printer in the building is worse than the leak it prevents.
+#
+# on_unreadable        encrypted PDFs the printer can render but we cannot read.
+#
+# rule_tags            which rule tags apply here. ["*"] means all of them.
+
+default:
+  deep_scan_required: false
+  fail_mode: open
+  on_unreadable: log
+  rule_tags: ["*"]
+  description: Every queue without an explicit entry.
+
+queues:
+  finance-laser:
+    deep_scan_required: true
+    fail_mode: closed
+    on_unreadable: hold
+    rule_tags: ["*"]
+    description: >
+      Finance floor. Handles card data and payment runs, so it accepts the latency of a
+      deep scan and stops printing entirely if the inspector is unavailable.
+
+  hr-mfp:
+    deep_scan_required: true
+    fail_mode: closed
+    on_unreadable: hold
+    rule_tags: [pii, hr, gdpr, corporate, secrets]
+    description: HR. Personal data by definition; scanned ID documents are routine here.
+
+  legal-secure:
+    deep_scan_required: true
+    fail_mode: closed
+    on_unreadable: hold
+    rule_tags: ["*"]
+    description: Legal. Privileged material and M&A drafts.
+
+  reception-mfp:
+    deep_scan_required: false
+    fail_mode: open
+    on_unreadable: log
+    rule_tags: [secrets, pci]
+    description: >
+      Front desk, mostly visitor passes and delivery notes. Narrow rule set to keep the
+      false positive rate near zero on a queue nobody is watching.
+
+  warehouse-label:
+    deep_scan_required: false
+    fail_mode: open
+    on_unreadable: log
+    rule_tags: [secrets]
+    description: >
+      Label printer. High volume, low sensitivity, and a stalled queue stops shipping —
+      fail open and inspect for credentials only.

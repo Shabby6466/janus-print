@@ -1,0 +1,117 @@
+# Corporate confidentiality markings and credentials.
+#
+# Classification banners are the highest-signal, lowest-cost rule in any DLP deployment:
+# the organisation has already told you the document is sensitive. Lead with these.
+
+rules:
+  - id: classification-banner
+    name: Classification marking
+    pattern: '\b(?:strictly\s+confidential|company\s+confidential|internal\s+use\s+only|restricted\s+distribution|not\s+for\s+distribution|proprietary\s+and\s+confidential)\b'
+    severity: 6
+    action: hold
+    base_confidence: 0.9
+    threshold: 0.75
+    min_count: 1
+    tags: [corporate]
+    fixtures:
+      positive:
+        - "STRICTLY CONFIDENTIAL — board pack, Q3"
+        - "This document is proprietary and confidential."
+      negative:
+        - "Please treat the contents as confidential where possible."
+
+  - id: board-material
+    name: Board or M&A material
+    pattern: '\b(?:board\s+pack|draft\s+merger|acquisition\s+target|term\s+sheet|due\s+diligence\s+report|project\s+[a-z]+\s+confidential)\b'
+    severity: 7
+    action: hold
+    base_confidence: 0.7
+    threshold: 0.75
+    min_count: 1
+    tags: [corporate, ma]
+    context:
+      terms: [confidential, draft, privileged, embargo, valuation]
+      boost: 0.25
+    fixtures:
+      positive:
+        - "Draft merger agreement — privileged and confidential"
+        - "Board pack circulated under embargo"
+      negative:
+        - "The board discussed the annual report."
+
+  - id: salary-schedule
+    name: Salary or compensation schedule
+    pattern: '\b(?:salary|compensation|bonus|remuneration)\b'
+    severity: 6
+    action: hold
+    base_confidence: 0.4
+    threshold: 0.65
+    min_count: 8
+    tags: [hr, corporate]
+    context:
+      terms: [employee, band, grade, headcount, payroll, annual, gross]
+      boost: 0.25
+    fixtures:
+      positive:
+        - >
+          payroll: employee salary band grade, employee salary annual gross,
+          employee bonus payroll grade, employee compensation band annual,
+          employee salary payroll gross, employee bonus band grade,
+          employee remuneration payroll annual, employee salary grade band,
+          employee compensation payroll gross, employee bonus annual band
+      negative:
+        - "Your salary review is scheduled for April."
+
+  - id: private-key
+    name: Private key or certificate
+    pattern: '-----BEGIN (?:RSA |EC |OPENSSH |PGP |DSA )?PRIVATE KEY-----'
+    severity: 9
+    action: block
+    base_confidence: 0.95
+    threshold: 0.75
+    ignore_case: false
+    tags: [secrets]
+    description: >
+      There is no legitimate reason to print a private key. This is the one rule set to
+      block rather than hold.
+    fixtures:
+      positive:
+        - "-----BEGIN RSA PRIVATE KEY-----\nMIIEow..."
+        - "-----BEGIN OPENSSH PRIVATE KEY-----"
+      negative:
+        - "-----BEGIN PUBLIC KEY-----"
+        - "-----BEGIN CERTIFICATE-----"
+
+  - id: aws-access-key
+    name: AWS access key id
+    pattern: '\b(?:AKIA|ASIA)[0-9A-Z]{16}\b'
+    severity: 8
+    action: hold
+    base_confidence: 0.9
+    threshold: 0.75
+    ignore_case: false
+    tags: [secrets]
+    fixtures:
+      positive:
+        - "aws_access_key_id = AKIAIOSFODNN7EXAMPLE"
+      negative:
+        - "Bucket ARN arn:aws:s3:::reports-archive"
+
+  - id: generic-secret-assignment
+    name: Credential assignment
+    pattern: '(?:password|passwd|api[_-]?key|secret|token)\s*[:=]\s*\S{8,}'
+    severity: 7
+    action: hold
+    base_confidence: 0.6
+    threshold: 0.75
+    min_count: 1
+    tags: [secrets]
+    context:
+      terms: [prod, production, database, server, admin, root, connection]
+      boost: 0.2
+    fixtures:
+      positive:
+        - "production database password: hunter2-correct-horse"
+      negative:
+        - "password: ****"
+        - "Reset your password: follow the link"

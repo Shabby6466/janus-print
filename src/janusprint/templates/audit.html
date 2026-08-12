@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% set active = 'audit' %}
+{% block title %}Audit — janus-print{% endblock %}
+{% block content %}
+<h1>Archive access</h1>
+<p class="sub">Who read what, and when. The archive watches its watchers.</p>
+
+<h2>Pending approvals</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Requested</th><th>Job</th><th>Requester</th><th>Reason</th><th></th></tr></thead>
+    <tbody>
+    {% for content_request in pending %}
+      <tr>
+        <td class="mono">{{ content_request.created_at.strftime('%d %b %H:%M') }}</td>
+        <td class="mono"><a href="/jobs/{{ content_request.job_id }}">{{ content_request.job_id[:12] }}</a></td>
+        <td>{{ content_request.requester }}</td>
+        <td class="wrap">{{ content_request.reason }}</td>
+        <td>
+          {% if user.role in ('approver','admin') and content_request.requester != user.username %}
+            <button class="btn" onclick="approveContent('{{ content_request.id }}')">Approve</button>
+          {% else %}
+            <span class="note">needs another approver</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty">Nothing pending.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2>Access log</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>When</th><th>Actor</th><th>Job</th><th>Kind</th><th>Source</th><th>Detail</th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+      <tr>
+        <td class="mono">{{ row.at.strftime('%d %b %H:%M:%S') }}</td>
+        <td>{{ row.actor }}</td>
+        <td class="mono"><a href="/jobs/{{ row.job_id }}">{{ row.job_id[:12] }}</a></td>
+        <td><span class="pill {{ 'bad' if row.kind == 'content' else 'muted' }}">{{ row.kind }}</span></td>
+        <td class="mono">{{ row.source_ip or '-' }}</td>
+        <td class="wrap note">{{ row.detail }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">No archive reads recorded.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

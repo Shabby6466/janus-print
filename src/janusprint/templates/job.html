@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% set active = 'queue' %}
+{% block title %}{{ job.title or job.id }} — janus-print{% endblock %}
+
+{% block content %}
+{% set label, tone = STATE_LABELS.get(job.state, (job.state.value, 'muted')) %}
+<h1>{{ job.title or '(untitled)' }} <span class="pill {{ tone }}">{{ label }}</span></h1>
+<p class="sub">{{ job.username }} on {{ job.queue }} &middot; {{ job.created_at.strftime('%d %b %Y %H:%M:%S') }}</p>
+
+{% if job.state.value == 'held' %}
+<p>
+  <button class="btn primary" onclick="decide('{{ job.id }}','release')">Release to printer</button>
+  <button class="btn danger" onclick="decide('{{ job.id }}','deny')">Deny and cancel</button>
+</p>
+{% endif %}
+
+{% if job.state.value == 'failed_open' %}
+<div class="banner gap">
+  This job printed <strong>without being inspected</strong>. The inspector was unavailable
+  and <code>{{ job.queue }}</code> is fail-open. Treat it as an unknown, not as clean.
+</div>
+{% endif %}
+
+<div class="row">
+  <div class="col">
+    <div class="panel">
+      <h3>Verdict</h3>
+      <dl class="kv">
+        <dt>Action</dt><dd>{{ job.action }}</dd>
+        <dt>Reason</dt><dd>{{ job.verdict_reason or '-' }}</dd>
+        <dt>Score</dt><dd class="mono">{{ '%.2f'|format(job.score) }}</dd>
+        <dt>Scan tier</dt><dd class="mono">{{ job.scan_tier.value }}</dd>
+        <dt>Pages</dt><dd class="mono">{{ job.page_count }} ({{ job.pages_without_text }} without text layer)</dd>
+        <dt>Inline time</dt><dd class="mono">{{ job.inline_ms }} ms</dd>
+      </dl>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <h3>Job</h3>
+      <dl class="kv">
+        <dt>Job id</dt><dd class="mono">{{ job.id }}</dd>
+        <dt>CUPS job</dt><dd class="mono">{{ job.queue }}-{{ job.cups_job_id }}</dd>
+        <dt>Workstation</dt><dd class="mono">{{ job.hostname or 'unknown' }}</dd>
+        <dt>Copies</dt><dd class="mono">{{ job.copies }}</dd>
+        <dt>Size</dt><dd class="mono">{{ '{:,}'.format(job.byte_size) }} bytes</dd>
+        <dt>SHA-256</dt><dd class="mono" style="font-size:11px">{{ job.content_sha256 or '-' }}</dd>
+        <dt>Options</dt><dd class="mono" style="font-size:11px">{{ job.options or '-' }}</dd>
+      </dl>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <h3>Queue policy — {{ job.queue }}</h3>
+      <dl class="kv">
+        <dt>Deep scan required</dt><dd>{{ 'yes' if policy.deep_scan_required else 'no' }}</dd>
+        <dt>Fail mode</dt><dd>{{ policy.fail_mode }}</dd>
+        <dt>On unreadable</dt><dd>{{ policy.on_unreadable }}</dd>
+        <dt>Rule tags</dt><dd class="mono">{{ policy.rule_tags | join(', ') }}</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="panel">
+      <h3>Matches</h3>
+      {% if job.matches %}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Rule</th><th>Sev</th><th>Count</th><th>Score</th><th>Tier</th><th>Page</th><th>Sample</th></tr></thead>
+          <tbody>
+          {% for match in job.matches | sort(attribute='severity', reverse=true) %}
+            <tr>
+              <td class="wrap">{{ match.rule_name }}<br><span class="mono note">{{ match.rule_id }}</span></td>
+              <td class="mono">{{ match.severity }}</td>
+              <td class="mono">{{ match.count }}</td>
+              <td class="mono">{{ '%.2f'|format(match.score) }}</td>
+              <td class="mono">{{ match.tier }}</td>
+              <td class="mono">{{ match.page or '-' }}</td>
+              <td class="mono">{{ match.sample }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="note" style="margin-top:10px">
+        Samples are masked. Raw values stay in the archive behind the approval gate.
+      </p>
+      {% else %}
+        <p class="note">No rule matched.</p>
+      {% endif %}
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <h3>Archived document</h3>
+      {% if job.purged_at %}
+        <p class="note">Purged {{ job.purged_at.strftime('%d %b %Y') }} under the retention policy.
+        The encryption key was destroyed with it — the content is unrecoverable.</p>
+      {% else %}
+        <p class="note">
+          Reading this document needs a reason and a second approver. Every read is logged
+          to the <a href="/audit">audit trail</a>.
+        </p>
+        <button class="btn" onclick="requestContent('{{ job.id }}')">Request access</button>
+        {% for content_request in content_requests %}
+          <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
+            <span class="pill {{ 'ok' if content_request.status == 'approved' else 'muted' }}">{{ content_request.status }}</span>
+            <span class="mono">{{ content_request.requester }}</span>
+            <div class="note">{{ content_request.reason }}</div>
+            {% if content_request.status == 'pending' and user.role in ('approver','admin') and content_request.requester != user.username %}
+              <button class="btn" style="margin-top:6px" onclick="approveContent('{{ content_request.id }}')">Approve</button>
+            {% elif content_request.status == 'pending' and content_request.requester == user.username %}
+              <div class="note">Awaiting a second person — you cannot approve your own request.</div>
+            {% elif content_request.status == 'approved' and content_request.requester == user.username and not content_request.used_at %}
+              <a class="btn" style="margin-top:6px" href="/api/v1/jobs/{{ job.id }}/content">Download (single use)</a>
+              <a class="btn ghost" style="margin-top:6px" href="/api/v1/jobs/{{ job.id }}/text">Extracted text</a>
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% endif %}
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <h3>History</h3>
+      <ul class="timeline">
+        {% for event in events %}
+          <li>
+            <div class="when">{{ event.at.strftime('%d %b %H:%M:%S') }} &middot; {{ event.actor }}</div>
+            <strong class="mono">{{ event.kind }}</strong>
+            {% if event.detail %}<div class="note">{{ event.detail }}</div>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

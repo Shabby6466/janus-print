@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% set active = 'documents' %}
+{% block title %}Registered documents — janus-print{% endblock %}
+{% block content %}
+<h1>Fingerprint corpus</h1>
+<p class="sub">
+  Registered documents are matched by winnowed shingle overlap, so excerpts and reworded
+  copies are caught — not just byte-identical files.
+</p>
+
+{% if user.role == 'admin' %}
+<div class="panel" style="margin-bottom:20px">
+  <h3>Register a document</h3>
+  <form method="post" action="/api/v1/documents" enctype="multipart/form-data">
+    <label for="doc">File (PDF, PostScript, or text)</label>
+    <input id="doc" type="file" name="document" required>
+    <label for="name">Name</label>
+    <input id="name" type="text" name="name" placeholder="Q3 board pack">
+    <label for="action">Action on match</label>
+    <select id="action" name="action">
+      <option value="hold">hold</option>
+      <option value="block">block</option>
+      <option value="log">log</option>
+    </select>
+    <button class="btn primary" type="submit">Register</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Name</th><th>Owner</th><th>Action</th><th>Sev</th><th>Fingerprints</th><th>Registered</th></tr></thead>
+    <tbody>
+    {% for document in documents %}
+      <tr>
+        <td class="wrap">{{ document.name }}</td>
+        <td>{{ document.owner or '-' }}</td>
+        <td><span class="pill {{ 'bad' if document.action == 'block' else 'warn' }}">{{ document.action }}</span></td>
+        <td class="mono">{{ document.severity }}</td>
+        <td class="mono">{{ document.shingle_count }}</td>
+        <td class="mono">{{ document.created_at.strftime('%d %b %Y') }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">No documents registered.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

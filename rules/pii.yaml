@@ -1,0 +1,96 @@
+# Personal data.
+#
+# These carry `required: true` context more often than the financial rules, because the
+# raw patterns (9 digits, a date, a name) are far too common in ordinary office documents
+# to act on unaided.
+
+rules:
+  - id: us-ssn
+    name: US Social Security Number
+    pattern: '\b\d{3}-\d{2}-\d{4}\b'
+    validator: us_ssn
+    severity: 8
+    action: hold
+    threshold: 0.75
+    tags: [pii, hr]
+    context:
+      terms: [ssn, social security, taxpayer, employee, tin]
+      boost: 0.2
+    fixtures:
+      positive:
+        - "Employee SSN 536-90-4399 on file"
+        - "Social Security: 452-11-9876"
+      negative:
+        - "Case 123-45-6789 in the docket"    # documentation placeholder
+        - "Ref 000-11-2222 archived"          # invalid area
+        - "Part 666-12-3456 discontinued"     # invalid area
+
+  - id: nhs-number
+    name: UK NHS number
+    pattern: '\b\d{3}[ -]?\d{3}[ -]?\d{4}\b'
+    validator: nhs_number
+    severity: 9
+    action: hold
+    threshold: 0.75
+    tags: [pii, health, gdpr]
+    context:
+      terms: [nhs, patient, gp, surgery, hospital, medical record]
+      boost: 0.2
+    fixtures:
+      positive:
+        - "Patient NHS number 943 476 5919 admitted Tuesday"
+      negative:
+        - "Phone 020 7946 0958 for the booking"       # fails mod-11
+        - "Invoice 123 456 7890 outstanding"          # fails mod-11
+
+  - id: email-bulk
+    name: Bulk email addresses
+    description: >
+      One email address is a signature block. Forty is a mailing list being carried out
+      of the building on paper.
+    pattern: '\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'
+    severity: 5
+    action: hold
+    base_confidence: 0.8
+    threshold: 0.75
+    min_count: 40
+    tags: [pii, gdpr]
+    fixtures:
+      positive:
+        - "contact1@example.com contact2@example.com contact3@example.com contact4@example.com contact5@example.com contact6@example.com contact7@example.com contact8@example.com contact9@example.com contact10@example.com contact11@example.com contact12@example.com contact13@example.com contact14@example.com contact15@example.com contact16@example.com contact17@example.com contact18@example.com contact19@example.com contact20@example.com contact21@example.com contact22@example.com contact23@example.com contact24@example.com contact25@example.com contact26@example.com contact27@example.com contact28@example.com contact29@example.com contact30@example.com contact31@example.com contact32@example.com contact33@example.com contact34@example.com contact35@example.com contact36@example.com contact37@example.com contact38@example.com contact39@example.com contact40@example.com"
+      negative:
+        - "Questions to alice@example.com or bob@example.com"
+
+  - id: date-of-birth
+    name: Date of birth field
+    pattern: '\b(?:d\.?o\.?b\.?|date of birth)\s*[:\-]?\s*\d{1,4}[/\-.]\d{1,2}[/\-.]\d{1,4}\b'
+    severity: 6
+    action: log
+    base_confidence: 0.85
+    threshold: 0.75
+    min_count: 3
+    tags: [pii, hr, gdpr]
+    fixtures:
+      positive:
+        - "DOB: 12/04/1981 ... D.O.B 03/11/1975 ... date of birth 1990-02-28"
+      negative:
+        - "Date of birth 12/04/1981 for the single record attached"
+
+  - id: passport-number
+    name: Passport number
+    pattern: '\b[A-Z]{1,2}\d{6,9}\b'
+    severity: 7
+    action: hold
+    base_confidence: 0.4
+    threshold: 0.65
+    ignore_case: false
+    tags: [pii, gdpr]
+    context:
+      terms: [passport, travel document, nationality, visa application]
+      boost: 0.3
+      required: true
+    fixtures:
+      positive:
+        - "Passport GB1234567 issued 2019"
+      negative:
+        - "Model X1234567 shipped in March"

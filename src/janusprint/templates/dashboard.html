@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% set active = 'dashboard' %}
+{% block title %}Dashboard — janus-print{% endblock %}
+
+{% block content %}
+<h1>Print inspection</h1>
+<p class="sub">{{ rules_loaded }} rules loaded &middot; CUPS control: {{ cups.mode }}</p>
+
+{% if gaps %}
+<div class="banner gap">
+  <strong>{{ gaps }} job{{ 's' if gaps != 1 }} released without inspection.</strong>
+  The inspector was unavailable and those queues are fail-open. These are coverage gaps,
+  not clean passes — <a href="/queue?state=failed_open">review them</a>.
+</div>
+{% endif %}
+
+{% if pending_requests %}
+<div class="banner info">
+  {{ pending_requests }} pending archive access request{{ 's' if pending_requests != 1 }} awaiting a
+  second approver &middot; <a href="/audit">review</a>
+</div>
+{% endif %}
+
+<div class="cards">
+  {% for state, count in counts.items() %}
+    {% set label, tone = STATE_LABELS.get(state, (state, 'muted')) %}
+    <div class="card {{ tone }}">
+      <div class="n">{{ count }}</div>
+      <div class="k">{{ label }}</div>
+    </div>
+  {% endfor %}
+</div>
+
+<h2>Awaiting review</h2>
+{% if held %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>When</th><th>User</th><th>Queue</th><th>Document</th><th>Verdict</th><th>Score</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for job in held %}
+      <tr>
+        <td class="mono">{{ job.created_at.strftime('%d %b %H:%M') }}</td>
+        <td>{{ job.username }}</td>
+        <td>{{ job.queue }}</td>
+        <td class="wrap"><a href="/jobs/{{ job.id }}">{{ job.title or '(untitled)' }}</a></td>
+        <td class="wrap">{{ job.verdict_reason }}</td>
+        <td class="mono">{{ '%.2f'|format(job.score) }}</td>
+        <td>
+          <button class="btn primary" onclick="decide('{{ job.id }}','release')">Release</button>
+          <button class="btn danger" onclick="decide('{{ job.id }}','deny')">Deny</button>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="table-wrap"><div class="empty">Nothing held. Every job cleared inspection.</div></div>
+{% endif %}
+
+<h2>Recent jobs</h2>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>When</th><th>User</th><th>Queue</th><th>Document</th><th>State</th><th>Tier</th><th>Pages</th><th>Inline</th></tr>
+    </thead>
+    <tbody>
+    {% for job in recent %}
+      {% set label, tone = STATE_LABELS.get(job.state, (job.state.value, 'muted')) %}
+      <tr>
+        <td class="mono">{{ job.created_at.strftime('%d %b %H:%M') }}</td>
+        <td>{{ job.username }}</td>
+        <td>{{ job.queue }}</td>
+        <td class="wrap"><a href="/jobs/{{ job.id }}">{{ job.title or '(untitled)' }}</a></td>
+        <td><span class="pill {{ tone }}">{{ label }}</span></td>
+        <td class="mono">{{ job.scan_tier.value }}</td>
+        <td class="mono">{{ job.page_count }}</td>
+        <td class="mono">{{ job.inline_ms }}ms</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="empty">No jobs inspected yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

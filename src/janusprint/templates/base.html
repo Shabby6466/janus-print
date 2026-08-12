@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}janus-print{% endblock %}</title>
+  <link rel="stylesheet" href="/static/console.css">
+</head>
+<body>
+{% if user %}
+<header class="top">
+  <div class="brand">janus-print<span>DLP</span></div>
+  <nav>
+    <a href="/" class="{{ 'active' if active == 'dashboard' }}">Dashboard</a>
+    <a href="/queue" class="{{ 'active' if active == 'queue' }}">Queue</a>
+    <a href="/rules" class="{{ 'active' if active == 'rules' }}">Rules</a>
+    <a href="/documents" class="{{ 'active' if active == 'documents' }}">Documents</a>
+    <a href="/policies" class="{{ 'active' if active == 'policies' }}">Policies</a>
+    <a href="/audit" class="{{ 'active' if active == 'audit' }}">Audit</a>
+  </nav>
+  <div class="who">{{ user.username }} &middot; {{ user.role }} &middot; <a href="/logout">sign out</a></div>
+</header>
+{% endif %}
+<main>
+{% block content %}{% endblock %}
+</main>
+<script>
+async function post(url, body) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body || {})
+  });
+  if (!response.ok) {
+    let detail = response.statusText;
+    try { detail = (await response.json()).detail || detail; } catch (e) {}
+    alert('Failed: ' + detail);
+    return null;
+  }
+  return response.json();
+}
+
+async function decide(jobId, verb) {
+  const prompt_ = verb === 'release'
+    ? 'Reason for releasing this job (recorded permanently):'
+    : 'Reason for denying this job (recorded permanently):';
+  const reason = prompt(prompt_);
+  if (!reason || reason.trim().length < 3) return;
+  const result = await post(`/api/v1/jobs/${jobId}/${verb}`, {reason: reason.trim()});
+  if (result) location.reload();
+}
+
+async function requestContent(jobId) {
+  const reason = prompt('Why do you need to read this document? A second person must approve.');
+  if (!reason || reason.trim().length < 3) return;
+  const result = await post(`/api/v1/jobs/${jobId}/content-requests`, {reason: reason.trim()});
+  if (result) location.reload();
+}
+
+async function approveContent(requestId) {
+  const result = await post(`/api/v1/jobs/content-requests/${requestId}/approve`, {});
+  if (result) location.reload();
+}
+</script>
+</body>
+</html>

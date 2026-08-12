@@ -1,0 +1,132 @@
+# The lab (PLAN.md phase 0). Everything needed to print a document end to end and watch it
+# be inspected, held, released, and alerted on — no printer, no Janus install required.
+#
+#   docker compose up -d --build
+#   docker compose exec client print-samples office-laser
+#   open http://localhost:8088          console  (admin / janus-print)
+#   open http://localhost:6631          CUPS admin
+#   docker compose logs -f siem         the CEF stream Janus would receive
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: janus
+      POSTGRES_PASSWORD: janus
+      POSTGRES_DB: janusprint
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U janus"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: janus
+      MINIO_ROOT_PASSWORD: janusjanus
+    ports:
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    environment:
+      JANUS_PRINT_DATABASE_URL: postgresql+psycopg://janus:janus@postgres:5432/janusprint
+      JANUS_PRINT_REDIS_URL: redis://redis:6379/0
+      JANUS_PRINT_ARCHIVE_BACKEND: s3
+      JANUS_PRINT_S3_ENDPOINT: http://minio:9000
+      JANUS_PRINT_SIEM_HOST: siem
+      JANUS_PRINT_SIEM_PORT: "514"
+      JANUS_PRINT_SIEM_PROTOCOL: udp
+      # Lab only. Both of these must be real secrets in production, and dev_mode must be
+      # off — it seeds a default admin account.
+      JANUS_PRINT_DEV_MODE: "true"
+      JANUS_PRINT_ARCHIVE_MASTER_KEY: lab-master-key-not-for-production
+      JANUS_PRINT_REQUIRE_DUAL_APPROVAL_FOR_CONTENT: "true"
+      # lp/cancel honour CUPS_SERVER, so "local" mode drives the remote spooler over IPP
+      # without needing ssh. On a real install the API usually runs on the print server
+      # itself and CUPS_SERVER is unset.
+      JANUS_PRINT_CUPS_CONTROL: local
+      CUPS_SERVER: cups
+    ports:
+      # 8088 on the host: 8080 is commonly already taken by a local dev server.
+      - "8088:8080"
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    command: ["janus-print-worker"]
+    # The image's healthcheck probes the HTTP API, which the worker does not serve.
+    healthcheck:
+      disable: true
+    environment:
+      JANUS_PRINT_DATABASE_URL: postgresql+psycopg://janus:janus@postgres:5432/janusprint
+      JANUS_PRINT_REDIS_URL: redis://redis:6379/0
+      JANUS_PRINT_ARCHIVE_BACKEND: s3
+      JANUS_PRINT_S3_ENDPOINT: http://minio:9000
+      JANUS_PRINT_SIEM_HOST: siem
+      JANUS_PRINT_DEV_MODE: "true"
+      JANUS_PRINT_ARCHIVE_MASTER_KEY: lab-master-key-not-for-production
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  cups:
+    build:
+      context: .
+      dockerfile: docker/cups/Dockerfile
+    environment:
+      JANUS_PRINT_API_URL: http://api:8080
+      JANUS_PRINT_SYSLOG_HOST: siem
+    ports:
+      - "6631:631"
+    depends_on:
+      - api
+
+  client:
+    build:
+      context: .
+      dockerfile: docker/client/Dockerfile
+    environment:
+      CUPS_SERVER: cups:631
+    depends_on:
+      - cups
+
+  # Stands in for Janus's syslog_receiver.py. Everything it prints is what Janus would
+  # ingest on UDP/514.
+  siem:
+    image: python:3.12-slim
+    command:
+      - python
+      - -c
+      - |
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind(("0.0.0.0", 514))
+        print("[siem] listening on udp/514 — this is what Janus receives", flush=True)
+        while True:
+            data, addr = sock.recvfrom(65535)
+            print(f"[siem] {addr[0]} {data.decode('utf-8', 'replace')}", flush=True)
+
+volumes:
+  pgdata:
+  miniodata:

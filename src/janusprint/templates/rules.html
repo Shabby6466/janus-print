@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% set active = 'rules' %}
+{% block title %}Rules — janus-print{% endblock %}
+{% block content %}
+<h1>Detection rules</h1>
+<p class="sub">
+  {{ rules|length }} loaded from <code>{{ settings.rules_dir }}</code>.
+  Edit the YAML and reload — a reload that regresses the fixtures is rejected.
+</p>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Rule</th><th>Action</th><th>Sev</th><th>Validator</th><th>Threshold</th><th>Min</th><th>Tags</th><th>Fixtures</th></tr></thead>
+    <tbody>
+    {% for rule in rules %}
+      <tr>
+        <td class="wrap">
+          <strong>{{ rule.name }}</strong><br>
+          <span class="mono note">{{ rule.id }}</span>
+          {% if rule.description %}<div class="note">{{ rule.description }}</div>{% endif %}
+        </td>
+        <td><span class="pill {{ 'bad' if rule.action == 'block' else 'warn' if rule.action == 'hold' else 'muted' }}">{{ rule.action }}</span></td>
+        <td class="mono">{{ rule.severity }}</td>
+        <td class="mono">{{ rule.validator or '-' }}</td>
+        <td class="mono">{{ rule.threshold }}</td>
+        <td class="mono">{{ rule.min_count }}</td>
+        <td class="mono">{{ rule.tags | join(', ') or '-' }}</td>
+        <td class="mono">{{ rule.fixtures.positive|length }}+ / {{ rule.fixtures.negative|length }}-</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if user.role == 'admin' %}
+<p style="margin-top:16px">
+  <button class="btn" onclick="post('/api/v1/rules/reload').then(r => r && location.reload())">Reload rules</button>
+</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% set active = 'queue' %}
+{% block title %}Queue — janus-print{% endblock %}
+
+{% block content %}
+<h1>Job queue</h1>
+<p class="sub">
+  {% for s in states %}
+    <a href="/queue?state={{ s }}" {% if s == state %}style="color:var(--text);font-weight:600"{% endif %}>{{ s }}</a>{% if not loop.last %} &middot; {% endif %}
+  {% endfor %}
+  &middot; <a href="/queue?state=all" {% if state == 'all' %}style="color:var(--text);font-weight:600"{% endif %}>all</a>
+</p>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>When</th><th>User</th><th>Host</th><th>Queue</th><th>Document</th><th>State</th><th>Rules</th><th>Score</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for job in jobs %}
+      {% set label, tone = STATE_LABELS.get(job.state, (job.state.value, 'muted')) %}
+      <tr>
+        <td class="mono">{{ job.created_at.strftime('%d %b %H:%M') }}</td>
+        <td>{{ job.username }}</td>
+        <td class="mono">{{ job.hostname or '-' }}</td>
+        <td>{{ job.queue }}</td>
+        <td class="wrap"><a href="/jobs/{{ job.id }}">{{ job.title or '(untitled)' }}</a></td>
+        <td><span class="pill {{ tone }}">{{ label }}</span></td>
+        <td class="wrap mono">{{ job.matches | map(attribute='rule_id') | unique | join(', ') or '-' }}</td>
+        <td class="mono">{{ '%.2f'|format(job.score) }}</td>
+        <td>
+          {% if job.state.value == 'held' %}
+            <button class="btn primary" onclick="decide('{{ job.id }}','release')">Release</button>
+            <button class="btn danger" onclick="decide('{{ job.id }}','deny')">Deny</button>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty">No jobs in this state.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
