@@ -204,7 +204,7 @@ class TestOps:
         assert "ocr_available" in body
 
     def test_rule_fixtures_pass_via_the_api(self, authed_client):
-        body = authed_client.get("/api/v1/rules/test").json()
+        body = authed_client.get("/api/v1/rules-test").json()
         assert body["failures"] == []
 
 

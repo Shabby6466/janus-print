@@ -14,8 +14,18 @@ from sqlalchemy.orm import Session
 
 from ..config import get_printer_policies, get_settings
 from ..db import get_session
+from ..inspector import store as rule_store
 from ..inspector.engine import get_ruleset
-from ..models import ArchiveAccess, ContentRequest, Job, JobState, RegisteredDocument, User
+from ..inspector.validators import VALIDATORS
+from ..models import (
+    ArchiveAccess,
+    ContentRequest,
+    Job,
+    JobState,
+    RegisteredDocument,
+    RuleRow,
+    User,
+)
 from . import cups_control
 from .auth import (
     SESSION_COOKIE,
@@ -39,6 +49,30 @@ STATE_LABELS = {
     JobState.error: ("Error", "bad"),
 }
 TEMPLATES.env.globals["STATE_LABELS"] = STATE_LABELS
+
+
+def _rule_dict(row: RuleRow) -> dict:
+    """Templates take plain dicts so the same shape serves both the list and the editor."""
+    return {
+        "id": row.id,
+        "name": row.name,
+        "description": row.description,
+        "pattern": row.pattern,
+        "action": row.action,
+        "severity": row.severity,
+        "validator": row.validator,
+        "base_confidence": row.base_confidence,
+        "threshold": row.threshold,
+        "min_count": row.min_count,
+        "ignore_case": row.ignore_case,
+        "tags": row.tags or [],
+        "context": row.context or {},
+        "fixtures": row.fixtures or {},
+        "enabled": row.enabled,
+        "source": row.source,
+        "updated_at": row.updated_at,
+        "updated_by": row.updated_by,
+    }
 
 
 def _render(request: Request, template: str, user: User | None, **context) -> HTMLResponse:
@@ -181,11 +215,69 @@ def job_view(
 
 @router.get("/rules")
 def rules_view(
-    request: Request, user: User | None = Depends(current_user_optional)
+    request: Request,
+    session: Session = Depends(get_session),
+    user: User | None = Depends(current_user_optional),
 ):
     if user is None:
         return _login_redirect("/rules")
-    return _render(request, "rules.html", user, rules=get_ruleset().rules)
+    rows = session.scalars(
+        select(RuleRow).order_by(RuleRow.enabled.desc(), RuleRow.severity.desc(), RuleRow.id)
+    ).all()
+    return _render(request, "rules.html", user, rules=[_rule_dict(row) for row in rows])
+
+
+@router.get("/rules/new")
+def rule_new(request: Request, user: User | None = Depends(current_user_optional)):
+    if user is None:
+        return _login_redirect("/rules/new")
+    if user.role != "admin":
+        return _render(request, "notfound.html", user, what="that page (admin only)")
+    return _render(
+        request, "rule_edit.html", user, rule={}, creating=True, validators=sorted(VALIDATORS)
+    )
+
+
+@router.get("/rules/history")
+def rule_history(
+    request: Request,
+    rule_id: str | None = None,
+    session: Session = Depends(get_session),
+    user: User | None = Depends(current_user_optional),
+):
+    if user is None:
+        return _login_redirect("/rules/history")
+    return _render(
+        request,
+        "rule_history.html",
+        user,
+        rule_id=rule_id,
+        revisions=rule_store.revisions(session, rule_id, 300),
+    )
+
+
+@router.get("/rules/{rule_id}")
+def rule_edit(
+    rule_id: str,
+    request: Request,
+    session: Session = Depends(get_session),
+    user: User | None = Depends(current_user_optional),
+):
+    if user is None:
+        return _login_redirect(f"/rules/{rule_id}")
+    if user.role != "admin":
+        return _render(request, "notfound.html", user, what="that page (admin only)")
+    row = session.get(RuleRow, rule_id)
+    if row is None:
+        return _render(request, "notfound.html", user, what=f"rule {rule_id}")
+    return _render(
+        request,
+        "rule_edit.html",
+        user,
+        rule=_rule_dict(row),
+        creating=False,
+        validators=sorted(VALIDATORS),
+    )
 
 
 @router.get("/documents")

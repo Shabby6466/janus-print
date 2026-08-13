@@ -31,6 +31,15 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     init_db()
 
+    # The YAML packs seed the rules table once. Existing rules are never overwritten, so a
+    # restart can't silently revert an operator's edits.
+    from ..inspector.store import seed_from_yaml
+
+    with session_scope() as session:
+        seeded = seed_from_yaml(session)
+    if seeded:
+        log.info("seeded %d rules from the shipped YAML packs", seeded)
+
     ruleset = get_ruleset()
     failures = test_fixtures(ruleset)
     if failures:

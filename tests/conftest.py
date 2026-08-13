@@ -27,19 +27,27 @@ def _isolated_settings(tmp_path, monkeypatch):
     from janusprint.bridge import cef
     from janusprint.inspector import engine
 
+    from janusprint.inspector import store as rule_store
+
     config.reset_caches()
     db.reset_engine()
     store.reset_archive()
     cef.reset_bridge()
-    engine._ruleset = None
+    rule_store.invalidate_cache()
 
     db.init_db()
+    # Rules live in the database now; seed the shipped packs so tests exercise the same
+    # ruleset the product ships with.
+    with db.session_scope() as seeding:
+        rule_store.seed_from_yaml(seeding)
+    rule_store.invalidate_cache()
     yield
 
     config.reset_caches()
     db.reset_engine()
     store.reset_archive()
     cef.reset_bridge()
+    rule_store.invalidate_cache()
 
 
 @pytest.fixture

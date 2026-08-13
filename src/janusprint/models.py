@@ -187,6 +187,62 @@ class Fingerprint(Base):
     __table_args__ = (Index("ix_fingerprints_hash", "hash"),)
 
 
+class RuleRow(Base):
+    """A detection rule, editable from the console.
+
+    The YAML packs in rules/ seed this table on first start; after that the database is
+    authoritative. Storing rules as data rather than files is what lets an operator add a
+    rule at 2am without a deploy — which is the difference between a policy that keeps up
+    with the business and one that ossifies.
+    """
+
+    __tablename__ = "rules"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(256))
+    description: Mapped[str] = mapped_column(Text, default="")
+    pattern: Mapped[str] = mapped_column(Text)
+    action: Mapped[str] = mapped_column(String(16), default="log")
+    severity: Mapped[int] = mapped_column(Integer, default=5)
+    validator: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    validator_weight: Mapped[float] = mapped_column(Float, default=0.3)
+    base_confidence: Mapped[float] = mapped_column(Float, default=0.6)
+    threshold: Mapped[float] = mapped_column(Float, default=0.75)
+    min_count: Mapped[int] = mapped_column(Integer, default=1)
+    ignore_case: Mapped[bool] = mapped_column(Boolean, default=True)
+    sample_prefix: Mapped[int] = mapped_column(Integer, default=4)
+    sample_suffix: Mapped[int] = mapped_column(Integer, default=4)
+    tags: Mapped[list] = mapped_column(JSON, default=list)
+    context: Mapped[dict] = mapped_column(JSON, default=dict)
+    fixtures: Mapped[dict] = mapped_column(JSON, default=dict)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+    source: Mapped[str] = mapped_column(String(16), default="yaml")  # yaml|console
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now, index=True
+    )
+    updated_by: Mapped[str] = mapped_column(String(128), default="system")
+
+
+class RuleRevision(Base):
+    """Every change to a rule, kept forever.
+
+    A weakened detection rule is indistinguishable from a working one until something is
+    missed, so who changed what, when, and why has to be answerable after the fact.
+    """
+
+    __tablename__ = "rule_revisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    rule_id: Mapped[str] = mapped_column(String(64), index=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    actor: Mapped[str] = mapped_column(String(128))
+    change: Mapped[str] = mapped_column(String(16))  # created|updated|deleted|enabled|disabled
+    note: Mapped[str] = mapped_column(Text, default="")
+    snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 class User(Base):
     __tablename__ = "users"
 

@@ -1,38 +1,93 @@
 {% extends "base.html" %}
 {% set active = 'rules' %}
 {% block title %}Rules — janus-print{% endblock %}
+
 {% block content %}
 <h1>Detection rules</h1>
 <p class="sub">
-  {{ rules|length }} loaded from <code>{{ settings.rules_dir }}</code>.
-  Edit the YAML and reload — a reload that regresses the fixtures is rejected.
+  {{ rules|length }} rules &middot; {{ rules | selectattr('enabled') | list | length }} enabled.
+  Changes take effect on the next job — no restart, no file access.
 </p>
+
+{% if user.role == 'admin' %}
+<p>
+  <a class="btn primary" href="/rules/new">New rule</a>
+  <a class="btn" href="/rules/history">Change history</a>
+</p>
+{% else %}
+<p class="note">Editing rules requires the admin role.</p>
+{% endif %}
+
 <div class="table-wrap">
   <table>
-    <thead><tr><th>Rule</th><th>Action</th><th>Sev</th><th>Validator</th><th>Threshold</th><th>Min</th><th>Tags</th><th>Fixtures</th></tr></thead>
+    <thead>
+      <tr>
+        <th>Rule</th><th>Action</th><th>Sev</th><th>Validator</th>
+        <th>Thresh</th><th>Min</th><th>Tags</th><th>Fixtures</th><th>Updated</th><th></th>
+      </tr>
+    </thead>
     <tbody>
     {% for rule in rules %}
-      <tr>
+      <tr {% if not rule.enabled %}style="opacity:.45"{% endif %}>
         <td class="wrap">
-          <strong>{{ rule.name }}</strong><br>
-          <span class="mono note">{{ rule.id }}</span>
+          <strong>{{ rule.name }}</strong>
+          {% if not rule.enabled %}<span class="pill muted">disabled</span>{% endif %}
+          <br><span class="mono note">{{ rule.id }}</span>
           {% if rule.description %}<div class="note">{{ rule.description }}</div>{% endif %}
         </td>
-        <td><span class="pill {{ 'bad' if rule.action == 'block' else 'warn' if rule.action == 'hold' else 'muted' }}">{{ rule.action }}</span></td>
+        <td>
+          <span class="pill {{ 'bad' if rule.action == 'block' else 'warn' if rule.action == 'hold' else 'muted' }}">
+            {{ rule.action }}
+          </span>
+        </td>
         <td class="mono">{{ rule.severity }}</td>
         <td class="mono">{{ rule.validator or '-' }}</td>
         <td class="mono">{{ rule.threshold }}</td>
         <td class="mono">{{ rule.min_count }}</td>
         <td class="mono">{{ rule.tags | join(', ') or '-' }}</td>
-        <td class="mono">{{ rule.fixtures.positive|length }}+ / {{ rule.fixtures.negative|length }}-</td>
+        <td class="mono">
+          {{ (rule.fixtures.get('positive') or []) | length }}+ /
+          {{ (rule.fixtures.get('negative') or []) | length }}-
+        </td>
+        <td class="mono note">
+          {{ rule.updated_at.strftime('%d %b') }}<br>{{ rule.updated_by }}
+        </td>
+        <td>
+          {% if user.role == 'admin' %}
+            <a class="btn" href="/rules/{{ rule.id }}">Edit</a>
+            <button class="btn ghost" onclick="toggleRule('{{ rule.id }}', {{ 'false' if rule.enabled else 'true' }})">
+              {{ 'Disable' if rule.enabled else 'Enable' }}
+            </button>
+          {% endif %}
+        </td>
       </tr>
+    {% else %}
+      <tr><td colspan="10" class="empty">No rules. Create one, or restart to seed from the YAML packs.</td></tr>
     {% endfor %}
     </tbody>
   </table>
 </div>
-{% if user.role == 'admin' %}
-<p style="margin-top:16px">
-  <button class="btn" onclick="post('/api/v1/rules/reload').then(r => r && location.reload())">Reload rules</button>
+
+<p class="note" style="margin-top:14px">
+  Rules are stored in the database. The YAML packs in <code>rules/</code> seed it on first
+  start and never overwrite an existing rule, so edits made here survive a restart.
 </p>
-{% endif %}
+
+<script>
+async function toggleRule(id, enable) {
+  const note = prompt(
+    (enable ? 'Enabling' : 'Disabling') + ' this rule. Reason (recorded permanently):'
+  );
+  if (note === null) return;
+  const response = await fetch(
+    `/api/v1/rules/${id}/enabled?enabled=${enable}&note=${encodeURIComponent(note)}`,
+    {method: 'POST'}
+  );
+  if (!response.ok) {
+    alert('Failed: ' + response.statusText);
+    return;
+  }
+  location.reload();
+}
+</script>
 {% endblock %}

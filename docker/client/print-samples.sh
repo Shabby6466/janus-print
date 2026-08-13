@@ -48,4 +48,4 @@ echo
 echo "=== queue state ==="
 lpstat -o "${QUEUE}" -l || true
 echo
-echo "Held jobs stay listed above. Release them from the console at http://localhost:8080/queue"
+echo "Held jobs stay listed above. Release them from the console at ${JANUS_PRINT_CONSOLE_URL:-http://localhost:8088}/queue"

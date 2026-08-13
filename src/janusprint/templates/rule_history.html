@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% set active = 'rules' %}
+{% block title %}Rule history — janus-print{% endblock %}
+
+{% block content %}
+<h1>Rule change history</h1>
+<p class="sub">
+  {% if rule_id %}
+    Changes to <span class="mono">{{ rule_id }}</span> &middot; <a href="/rules/history">all rules</a>
+  {% else %}
+    Who changed detection, when, and why.
+  {% endif %}
+</p>
+
+<div class="banner info">
+  A weakened rule is indistinguishable from a working one until something is missed. These
+  entries are kept permanently, including for rules that have since been deleted.
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>When</th><th>Rule</th><th>Change</th><th>By</th><th>Reason</th></tr></thead>
+    <tbody>
+    {% for revision in revisions %}
+      <tr>
+        <td class="mono">{{ revision.at.strftime('%d %b %H:%M') }}</td>
+        <td class="mono"><a href="/rules/history?rule_id={{ revision.rule_id }}">{{ revision.rule_id }}</a></td>
+        <td>
+          <span class="pill {{ 'bad' if revision.change in ('deleted','disabled') else 'ok' if revision.change == 'created' else 'muted' }}">
+            {{ revision.change }}
+          </span>
+        </td>
+        <td>{{ revision.actor }}</td>
+        <td class="wrap note">{{ revision.note or '-' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty">No changes recorded.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p style="margin-top:16px"><a class="btn" href="/rules">Back to rules</a></p>
+{% endblock %}

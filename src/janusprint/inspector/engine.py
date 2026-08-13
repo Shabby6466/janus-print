@@ -27,25 +27,36 @@ from ..models import ExtractedText, Fingerprint, Job, JobEvent, JobState, Match,
 from ..models import ScanTier
 from . import fingerprint as fp
 from .extract import ExtractionResult, extract
-from .rules import RuleHit, RuleSet, load_rules, merge_action
+from .rules import RuleHit, RuleSet, merge_action
 
 log = logging.getLogger(__name__)
 
-_ruleset: RuleSet | None = None
+def get_ruleset(session: Session | None = None) -> RuleSet:
+    """Active rules, from the database.
 
+    A session is passed on the inspection path so the ruleset is checked against the
+    table's current version — an operator disabling a rule in the console must take effect
+    on the next job, in every process, not on the next restart.
+    """
+    from .store import load_ruleset
 
-def get_ruleset() -> RuleSet:
-    global _ruleset
-    if _ruleset is None:
-        _ruleset = load_rules()
-        log.info("loaded %d rules", len(_ruleset))
-    return _ruleset
+    if session is not None:
+        return load_ruleset(session)
+
+    from ..db import session_scope
+
+    with session_scope() as scoped:
+        return load_ruleset(scoped)
 
 
 def reload_rules() -> int:
-    global _ruleset
-    _ruleset = load_rules()
-    return len(_ruleset)
+    """Drop the cache and rebuild. Rules themselves live in the database now."""
+    from ..db import session_scope
+    from .store import invalidate_cache, load_ruleset
+
+    invalidate_cache()
+    with session_scope() as session:
+        return len(load_ruleset(session))
 
 
 @dataclass
@@ -179,7 +190,7 @@ def _run_inspection(
         ExtractedText(job_id=job.id, tier="text", pages=result.pages, chars=result.chars)
     )
 
-    ruleset = get_ruleset().select(policy.rule_tags)
+    ruleset = get_ruleset(session).select(policy.rule_tags)
     hits: list[RuleHit] = []
     for number, page_text in enumerate(result.pages, start=1):
         if not page_text.strip():
@@ -422,7 +433,7 @@ def deep_scan(session: Session, job_id: str) -> Verdict | None:
 
     texts = ocr_pages(pdf_bytes, thin)
     policy = get_printer_policies().for_queue(job.queue)
-    ruleset = get_ruleset().select(policy.rule_tags)
+    ruleset = get_ruleset(session).select(policy.rule_tags)
 
     hits: list[RuleHit] = []
     for page_number, text in texts.items():
