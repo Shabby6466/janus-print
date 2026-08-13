@@ -68,9 +68,17 @@ def _run(args: list[str], *, check_output: bool = False) -> str:
             args, check=True, capture_output=True, timeout=30
         )
     except subprocess.CalledProcessError as exc:
-        raise CupsControlError(
-            f"{' '.join(args)} failed: {exc.stderr.decode(errors='replace').strip()}"
-        ) from exc
+        stderr = exc.stderr.decode(errors="replace").strip()
+        if "Unable to connect to server" in stderr:
+            # This is the API failing to reach cupsd, not the printer failing to answer.
+            # The distinction matters: the usual cause is CUPS_SERVER pointing at a name
+            # that no longer resolves, e.g. after moving cups to host networking.
+            raise CupsControlError(
+                f"cannot reach cupsd at CUPS_SERVER={os.environ.get('CUPS_SERVER', '(unset)')} "
+                f"— this is the print server, not the printer. Check that the address "
+                f"resolves from the API container and that cupsd allows it. ({stderr})"
+            ) from exc
+        raise CupsControlError(f"{' '.join(args)} failed: {stderr}") from exc
     except subprocess.TimeoutExpired as exc:
         raise CupsControlError(f"{' '.join(args)} timed out") from exc
 

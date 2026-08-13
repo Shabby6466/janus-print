@@ -32,6 +32,16 @@ services:
       JANUS_PRINT_SYSLOG_PORT: "514"
     ports: !reset []
 
+  # The API drives the spooler with lp/lpadmin/cancel, which honour CUPS_SERVER. Once cups
+  # is host-networked it is no longer on the bridge network, so the service name stops
+  # resolving and every queue operation fails with "Unable to connect to server" — which
+  # reads like a printer fault but is the API not finding cupsd at all.
+  api:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      CUPS_SERVER: host.docker.internal:631
+
   # Reachable from the host-networked cups container.
   siem:
     ports:
