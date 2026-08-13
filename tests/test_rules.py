@@ -163,3 +163,58 @@ def test_ordinary_office_document_is_clean():
     )
     hits = ruleset.evaluate_page(page, 1)
     assert not hits, [h.rule.id for h in hits]
+
+
+class TestTextPlausibility:
+    """Guarding against a text layer that exists but is not language.
+
+    This is the failure that let a confidential document print: macOS embedded a subset
+    font with no Unicode mapping, extraction produced one symbol per glyph, the page
+    counted as having text, OCR never ran, and no rule could match.
+    """
+
+    def test_real_glyph_soup_is_rejected(self):
+        from janusprint.inspector.extract import looks_like_language
+
+        # Captured from an actual macOS Word print job.
+        soup = "!\"#$%&'(#)*$+'+,+-.*!+--/#\"$0*1%)'.\"23&#\"\".&'31#\"-.\r\n-'\"(&'45*&#)6$.)'(+4"
+        assert looks_like_language(soup) is False
+
+    def test_ordinary_prose_is_accepted(self):
+        from janusprint.inspector.extract import looks_like_language
+
+        assert looks_like_language("production database password: hunter2-correct-horse")
+        assert looks_like_language("STRICTLY CONFIDENTIAL")
+        assert looks_like_language("Quarterly facilities report for the October meeting")
+
+    def test_mostly_numeric_pages_still_pass(self):
+        """An invoice is legitimate text even though most characters are digits."""
+        from janusprint.inspector.extract import looks_like_language
+
+        assert looks_like_language("Invoice 4111 total 1,204.55 due 30 days net amount")
+
+    def test_empty_is_not_language(self):
+        from janusprint.inspector.extract import looks_like_language
+
+        assert looks_like_language("") is False
+        assert looks_like_language("   \n  ") is False
+
+    def test_glyph_soup_page_is_routed_to_ocr(self):
+        from janusprint.inspector.extract import ExtractionResult
+
+        soup = "!\"#$%&'(#)*$+'+,+-.*!+--/#\"$0*1%)'.\"23&#\"\".&'31#\"-." * 3
+        result = ExtractionResult(pages=[soup], page_count=1, format="pdf")
+        # Plenty of characters, so the old length-only check passed it through.
+        assert len(soup) > 20
+        assert result.pages_without_text(20) == [1]
+        assert result.unreadable_text_pages(20) == [1]
+
+    def test_genuine_page_is_not_routed_to_ocr(self):
+        from janusprint.inspector.extract import ExtractionResult
+
+        result = ExtractionResult(
+            pages=["Quarterly facilities report. Room utilisation is up twelve percent."],
+            page_count=1,
+            format="pdf",
+        )
+        assert result.pages_without_text(20) == []

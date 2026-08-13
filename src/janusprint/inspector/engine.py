@@ -250,8 +250,8 @@ def _run_inspection(
         if policy.deep_scan_required and ACTION_RANK[action] < ACTION_RANK["hold"]:
             action = "hold"
             reason = (
-                f"{len(thin_pages)} page(s) have no text layer and this queue requires a "
-                f"deep scan before release"
+                f"{len(thin_pages)} page(s) could not be read as text and this queue "
+                f"requires a deep scan before release"
             )
 
     state = _state_for(action)

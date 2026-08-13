@@ -31,7 +31,7 @@
         <dt>Reason</dt><dd>{{ job.verdict_reason or '-' }}</dd>
         <dt>Score</dt><dd class="mono">{{ '%.2f'|format(job.score) }}</dd>
         <dt>Scan tier</dt><dd class="mono">{{ job.scan_tier.value }}</dd>
-        <dt>Pages</dt><dd class="mono">{{ job.page_count }} ({{ job.pages_without_text }} without text layer)</dd>
+        <dt>Pages</dt><dd class="mono">{{ job.page_count }} ({{ job.pages_without_text }} not readable as text)</dd>
         <dt>Inline time</dt><dd class="mono">{{ job.inline_ms }} ms</dd>
       </dl>
     </div>

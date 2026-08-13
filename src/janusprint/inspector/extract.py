@@ -16,6 +16,7 @@ Driverless (`-m everywhere`) queues deliver PDF, which is why the plan insists o
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import subprocess
 import tempfile
@@ -32,6 +33,38 @@ PCL_MAGIC = b"\x1b%-12345X"  # PJL / Universal Exit Language
 PCL_ALT = b"\x1bE"
 
 
+_WORDLIKE = re.compile(r"[A-Za-z]{3,}")
+_VOWELS = set("aeiouAEIOU")
+
+
+def looks_like_language(text: str) -> bool:
+    """Does this look like words, or like glyph codes?
+
+    A PDF produced from macOS/Word PostScript often carries a subset font with a custom
+    encoding and no ToUnicode map. Extraction then yields one symbol per glyph — a text
+    layer that is present, non-empty, and completely meaningless:
+
+        !"#$%&'(#)*$+'+,+-.*!+--/#"$0*1%)'."23&#"".&'31#"-.
+
+    That is more dangerous than no text at all: the page counts as having a text layer, so
+    the OCR fallback never runs, and every rule silently fails to match while the job is
+    reported as cleanly inspected. This check is what routes such pages to OCR instead.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return False
+
+    words = _WORDLIKE.findall(stripped)
+    with_vowels = [w for w in words if _VOWELS & set(w)]
+    if len(with_vowels) >= 3:
+        return True
+
+    # Fall back to alphabetic density, so a short but genuine line still passes while
+    # symbol soup does not.
+    letters = sum(1 for c in stripped if c.isalpha())
+    return letters / len(stripped) >= 0.30
+
+
 @dataclass
 class ExtractionResult:
     pages: list[str] = field(default_factory=list)
@@ -46,8 +79,24 @@ class ExtractionResult:
         return sum(len(p) for p in self.pages)
 
     def pages_without_text(self, minimum: int) -> list[int]:
-        """1-indexed pages whose text layer is too thin to trust — OCR candidates."""
-        return [i for i, page in enumerate(self.pages, start=1) if len(page.strip()) < minimum]
+        """1-indexed pages whose text cannot be trusted — OCR candidates.
+
+        Two ways a page qualifies: too little text to be worth reading, or text that is
+        present but does not look like language (see looks_like_language).
+        """
+        candidates: list[int] = []
+        for index, page in enumerate(self.pages, start=1):
+            if len(page.strip()) < minimum or not looks_like_language(page):
+                candidates.append(index)
+        return candidates
+
+    def unreadable_text_pages(self, minimum: int) -> list[int]:
+        """Pages with plenty of text that still is not language — a mis-encoded font."""
+        return [
+            index
+            for index, page in enumerate(self.pages, start=1)
+            if len(page.strip()) >= minimum and not looks_like_language(page)
+        ]
 
     @property
     def text(self) -> str:
