@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% set active = 'users' %}
+{% block title %}Users — janus-print{% endblock %}
+
+{% block content %}
+<h1>Users and roles</h1>
+<p class="sub">{{ users|length }} accounts. Changing a role or disabling an account ends that user's session immediately.</p>
+
+<div class="panel" style="margin-bottom:20px">
+  <h3>Roles</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Role</th><th>Queue</th><th>Release / deny</th><th>Request content</th><th>Approve access</th><th>Rules &amp; users</th></tr></thead>
+      <tbody>
+        <tr><td><span class="pill muted">viewer</span></td><td>read</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+        <tr><td><span class="pill ok">analyst</span></td><td>read</td><td>yes</td><td>yes</td><td>—</td><td>—</td></tr>
+        <tr><td><span class="pill warn">approver</span></td><td>read</td><td>yes</td><td>yes</td><td>yes</td><td>—</td></tr>
+        <tr><td><span class="pill bad">admin</span></td><td>read</td><td>yes</td><td>yes</td><td>yes</td><td>yes</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note" style="margin-top:10px">
+    Nobody can approve their own content request, regardless of role — that is what makes
+    the second signature meaningful.
+  </p>
+</div>
+
+<div class="panel" style="margin-bottom:20px">
+  <h3>Add a user</h3>
+  <div class="row" style="gap:12px">
+    <div style="flex:1"><label for="nu_username">Username</label><input id="nu_username" type="text"></div>
+    <div style="flex:1"><label for="nu_display">Display name</label><input id="nu_display" type="text"></div>
+    <div style="flex:1">
+      <label for="nu_role">Role</label>
+      <select id="nu_role">
+        {% for r in roles %}<option value="{{ r }}" {{ 'selected' if r == 'viewer' }}>{{ r }}</option>{% endfor %}
+      </select>
+    </div>
+    <div style="flex:1"><label for="nu_password">Password (min 12 chars)</label><input id="nu_password" type="password"></div>
+  </div>
+  <div id="createerr" class="err"></div>
+  <button class="btn primary" onclick="createUser()">Create user</button>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Status</th><th>Created</th><th></th></tr></thead>
+    <tbody>
+    {% for u in users %}
+      <tr {% if not u.active %}style="opacity:.5"{% endif %}>
+        <td class="mono">{{ u.username }}{% if u.id == user.id %} <span class="note">(you)</span>{% endif %}</td>
+        <td>{{ u.display_name }}</td>
+        <td>
+          <select onchange="setRole('{{ u.id }}', this.value)" style="margin:0;width:auto">
+            {% for r in roles %}<option value="{{ r }}" {{ 'selected' if u.role == r }}>{{ r }}</option>{% endfor %}
+          </select>
+        </td>
+        <td><span class="pill {{ 'ok' if u.active else 'bad' }}">{{ 'active' if u.active else 'disabled' }}</span></td>
+        <td class="mono note">{{ u.created_at.strftime('%d %b %Y') }}</td>
+        <td>
+          <button class="btn" onclick="resetPassword('{{ u.id }}','{{ u.username }}')">Reset password</button>
+          <button class="btn ghost" onclick="setActive('{{ u.id }}', {{ 'false' if u.active else 'true' }})">
+            {{ 'Disable' if u.active else 'Enable' }}
+          </button>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+async function api(url, method, body) {
+  const response = await fetch(url, {
+    method: method,
+    headers: {'Content-Type': 'application/json'},
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (!response.ok) {
+    let detail = response.statusText;
+    try { detail = (await response.json()).detail || detail; } catch (e) {}
+    return {ok: false, detail: typeof detail === 'string' ? detail : JSON.stringify(detail)};
+  }
+  return {ok: true, body: await response.json()};
+}
+
+async function createUser() {
+  const error = document.getElementById('createerr');
+  error.textContent = '';
+  const result = await api('/api/v1/users', 'POST', {
+    username: document.getElementById('nu_username').value.trim(),
+    display_name: document.getElementById('nu_display').value.trim(),
+    role: document.getElementById('nu_role').value,
+    password: document.getElementById('nu_password').value
+  });
+  if (!result.ok) { error.textContent = result.detail; return; }
+  location.reload();
+}
+
+async function setRole(id, role) {
+  const result = await api(`/api/v1/users/${id}`, 'PATCH', {role: role});
+  if (!result.ok) { alert(result.detail); }
+  location.reload();
+}
+
+async function setActive(id, active) {
+  const result = await api(`/api/v1/users/${id}`, 'PATCH', {active: active});
+  if (!result.ok) { alert(result.detail); }
+  location.reload();
+}
+
+async function resetPassword(id, username) {
+  const password = prompt(`New password for ${username} (min 12 characters):`);
+  if (!password) return;
+  const result = await api(`/api/v1/users/${id}/password`, 'POST', {password: password});
+  if (!result.ok) { alert(result.detail); return; }
+  alert(`Password reset for ${username}. Their session has been ended.`);
+}
+</script>
+{% endblock %}

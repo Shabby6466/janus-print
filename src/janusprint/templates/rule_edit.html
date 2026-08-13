@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 {% set active = 'rules' %}
-{% block title %}{{ 'New rule' if creating else rule.id }} — janus-print{% endblock %}
+{% block title %}{{ 'New rule' if creating else rule.get('id') }} — janus-print{% endblock %}
 
 {% block content %}
-<h1>{{ 'New rule' if creating else rule.name }}</h1>
+<h1>{{ 'New rule' if creating else rule.get('name') }}</h1>
 <p class="sub">
   {% if creating %}
     A rule is only saved if it compiles and passes its own fixtures.
   {% else %}
-    <span class="mono">{{ rule.id }}</span> &middot; last changed by {{ rule.updated_by }}
-    on {{ rule.updated_at.strftime('%d %b %Y') }} &middot;
-    <a href="/rules/history?rule_id={{ rule.id }}">history</a>
+    <span class="mono">{{ rule.get('id') }}</span> &middot; last changed by {{ rule.get('updated_by') }}
+    on {{ rule.get('updated_at').strftime('%d %b %Y') }} &middot;
+    <a href="/rules/history?rule_id={{ rule.get('id') }}">history</a>
   {% endif %}
 </p>
 
@@ -20,37 +20,37 @@
       <h3>Definition</h3>
 
       <label for="id">Rule id</label>
-      <input id="id" type="text" value="{{ rule.id or '' }}" {{ 'readonly' if not creating }}
+      <input id="id" type="text" value="{{ rule.get('id', '') }}" {{ 'readonly' if not creating }}
              placeholder="salary-schedule">
 
       <label for="name">Name</label>
-      <input id="name" type="text" value="{{ rule.name or '' }}" placeholder="Salary schedule">
+      <input id="name" type="text" value="{{ rule.get('name', '') }}" placeholder="Salary schedule">
 
       <label for="description">Description — why this rule exists</label>
-      <textarea id="description" rows="2">{{ rule.description or '' }}</textarea>
+      <textarea id="description" rows="2">{{ rule.get('description', '') }}</textarea>
 
       <label for="pattern">Pattern (regular expression)</label>
-      <textarea id="pattern" rows="3" class="mono">{{ rule.pattern or '' }}</textarea>
+      <textarea id="pattern" rows="3" class="mono">{{ rule.get('pattern', '') }}</textarea>
 
       <div class="row" style="gap:12px">
         <div style="flex:1">
           <label for="action">Action on match</label>
           <select id="action">
             {% for option in ['log', 'hold', 'block'] %}
-              <option value="{{ option }}" {{ 'selected' if rule.action == option }}>{{ option }}</option>
+              <option value="{{ option }}" {{ 'selected' if rule.get('action', 'log') == option }}>{{ option }}</option>
             {% endfor %}
           </select>
         </div>
         <div style="flex:1">
           <label for="severity">Severity (0-10)</label>
-          <input id="severity" type="number" min="0" max="10" value="{{ rule.severity if rule.severity is not none else 5 }}">
+          <input id="severity" type="number" min="0" max="10" value="{{ rule.get('severity', 5) }}">
         </div>
       </div>
 
       <label for="validator">Validator — structural check that kills false positives</label>
       <select id="validator">
         {% for option in validators %}
-          <option value="{{ option }}" {{ 'selected' if (rule.validator or 'none') == option }}>{{ option }}</option>
+          <option value="{{ option }}" {{ 'selected' if (rule.get('validator') or 'none') == option }}>{{ option }}</option>
         {% endfor %}
       </select>
 
@@ -58,25 +58,25 @@
         <div style="flex:1">
           <label for="threshold">Score threshold</label>
           <input id="threshold" type="number" step="0.05" min="0" max="1"
-                 value="{{ rule.threshold if rule.threshold is not none else 0.75 }}">
+                 value="{{ rule.get('threshold', 0.75) }}">
         </div>
         <div style="flex:1">
           <label for="base_confidence">Base confidence</label>
           <input id="base_confidence" type="number" step="0.05" min="0" max="1"
-                 value="{{ rule.base_confidence if rule.base_confidence is not none else 0.6 }}">
+                 value="{{ rule.get('base_confidence', 0.6) }}">
         </div>
         <div style="flex:1">
           <label for="min_count">Min matches</label>
-          <input id="min_count" type="number" min="1" value="{{ rule.min_count or 1 }}">
+          <input id="min_count" type="number" min="1" value="{{ rule.get('min_count', 1) }}">
         </div>
       </div>
 
       <label for="tags">Tags (comma separated) — queue policies select rules by tag</label>
-      <input id="tags" type="text" value="{{ (rule.tags or []) | join(', ') }}" placeholder="pii, hr">
+      <input id="tags" type="text" value="{{ rule.get('tags', []) | join(', ') }}" placeholder="pii, hr">
 
       <label>
         <input id="ignore_case" type="checkbox" style="width:auto"
-               {{ 'checked' if rule.ignore_case is not defined or rule.ignore_case }}>
+               {{ 'checked' if rule.get('ignore_case', True) }}>
         Case insensitive
       </label>
     </div>
@@ -90,25 +90,25 @@
 
       <label for="context_terms">Nearby terms (comma separated)</label>
       <input id="context_terms" type="text"
-             value="{{ (rule.context.get('terms') if rule.context else []) | join(', ') }}"
+             value="{{ (rule.get('context') or {}).get('terms', []) | join(', ') }}"
              placeholder="card, cvv, cardholder">
 
       <div class="row" style="gap:12px">
         <div style="flex:1">
           <label for="context_window">Window (characters)</label>
           <input id="context_window" type="number"
-                 value="{{ (rule.context.get('window') if rule.context else 50) or 50 }}">
+                 value="{{ (rule.get('context') or {}).get('window', 50) }}">
         </div>
         <div style="flex:1">
           <label for="context_boost">Score boost</label>
           <input id="context_boost" type="number" step="0.05"
-                 value="{{ (rule.context.get('boost') if rule.context else 0.3) or 0.3 }}">
+                 value="{{ (rule.get('context') or {}).get('boost', 0.3) }}">
         </div>
       </div>
 
       <label>
         <input id="context_required" type="checkbox" style="width:auto"
-               {{ 'checked' if rule.context and rule.context.get('required') }}>
+               {{ 'checked' if (rule.get('context') or {}).get('required') }}>
         Require a nearby term — the rule cannot fire without one
       </label>
     </div>
@@ -125,10 +125,10 @@
       </p>
 
       <label for="positive">Must match</label>
-      <textarea id="positive" rows="5" class="mono">{{ (rule.fixtures.get('positive') if rule.fixtures else []) | join('\n') }}</textarea>
+      <textarea id="positive" rows="5" class="mono">{{ (rule.get('fixtures') or {}).get('positive', []) | join('\n') }}</textarea>
 
       <label for="negative">Must not match</label>
-      <textarea id="negative" rows="5" class="mono">{{ (rule.fixtures.get('negative') if rule.fixtures else []) | join('\n') }}</textarea>
+      <textarea id="negative" rows="5" class="mono">{{ (rule.get('fixtures') or {}).get('negative', []) | join('\n') }}</textarea>
     </div>
 
     <div class="panel" style="margin-top:16px">
@@ -156,14 +156,23 @@
 </div>
 
 <script>
-const CREATING = {{ 'true' if creating else 'false' }};
-const RULE_ID = {{ (rule.id or '') | tojson }};
+const CREATING = "{{ 'true' if creating else 'false' }}" === "true";
+const RULE_ID = "{{ rule.get('id', '') }}";
 
 function lines(id) {
   return document.getElementById(id).value.split('\n').map(s => s.trim()).filter(Boolean);
 }
 function val(id) { return document.getElementById(id).value.trim(); }
-function num(id) { return parseFloat(document.getElementById(id).value); }
+// A blank input parses to NaN, which JSON.stringify turns into null — the API then
+// rejects the whole rule with a 422 that looks unrelated to the empty box. Fall back.
+function num(id, fallback) {
+  const parsed = parseFloat(document.getElementById(id).value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+function int(id, fallback) {
+  const parsed = parseInt(document.getElementById(id).value, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
 function checked(id) { return document.getElementById(id).checked; }
 
 function collect() {
@@ -174,17 +183,17 @@ function collect() {
     description: val('description'),
     pattern: val('pattern'),
     action: val('action'),
-    severity: parseInt(document.getElementById('severity').value, 10),
+    severity: int('severity', 5),
     validator: (validator && validator !== 'none') ? validator : null,
-    base_confidence: num('base_confidence'),
-    threshold: num('threshold'),
-    min_count: parseInt(document.getElementById('min_count').value, 10),
+    base_confidence: num('base_confidence', 0.6),
+    threshold: num('threshold', 0.75),
+    min_count: int('min_count', 1),
     ignore_case: checked('ignore_case'),
     tags: val('tags').split(',').map(s => s.trim()).filter(Boolean),
     context: {
       terms: val('context_terms').split(',').map(s => s.trim()).filter(Boolean),
-      window: parseInt(document.getElementById('context_window').value, 10),
-      boost: num('context_boost'),
+      window: int('context_window', 50),
+      boost: num('context_boost', 0.3),
       required: checked('context_required')
     },
     fixtures: {positive: lines('positive'), negative: lines('negative')},

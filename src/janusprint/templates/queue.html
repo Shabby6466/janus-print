@@ -29,7 +29,7 @@
         <td class="wrap mono">{{ job.matches | map(attribute='rule_id') | unique | join(', ') or '-' }}</td>
         <td class="mono">{{ '%.2f'|format(job.score) }}</td>
         <td>
-          {% if job.state.value == 'held' %}
+          {% if job.state.value == 'held' and user.role != 'viewer' %}
             <button class="btn primary" onclick="decide('{{ job.id }}','release')">Release</button>
             <button class="btn danger" onclick="decide('{{ job.id }}','deny')">Deny</button>
           {% endif %}

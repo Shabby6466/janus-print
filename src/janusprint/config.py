@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     session_ttl_seconds: int = 8 * 3600
     # Viewing archived document *content* needs a second person to approve.
     require_dual_approval_for_content: bool = True
+    # Whether an analyst may page through a HELD job without a grant, to decide on it.
+    # Rendered images only, watermarked and logged; downloading the original always needs
+    # the grant. Turning this off is more private but tends to produce rubber-stamped
+    # releases, because reviewers decide without seeing the page.
+    allow_preview_for_held_jobs: bool = True
 
 
 class PrinterPolicy(BaseModel):

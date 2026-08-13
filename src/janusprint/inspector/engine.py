@@ -22,7 +22,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..archive.store import get_archive
-from ..config import ACTION_RANK, Action, PrinterPolicy, get_printer_policies, get_settings
+from ..config import ACTION_RANK, Action, PrinterPolicy, get_settings
+from ..printers import policy_for
 from ..models import ExtractedText, Fingerprint, Job, JobEvent, JobState, Match, RegisteredDocument
 from ..models import ScanTier
 from . import fingerprint as fp
@@ -98,7 +99,7 @@ def inspect_job(
     started = time.monotonic()
     settings = get_settings()
     budget = deadline if deadline is not None else settings.inspect_deadline_seconds
-    policy = get_printer_policies().for_queue(meta.queue)
+    policy = policy_for(session, meta.queue)
     digest = hashlib.sha256(data).hexdigest()
 
     # CUPS re-runs the backend whenever a job is retried or resumed, so the same physical
@@ -432,7 +433,7 @@ def deep_scan(session: Session, job_id: str) -> Verdict | None:
         return None
 
     texts = ocr_pages(pdf_bytes, thin)
-    policy = get_printer_policies().for_queue(job.queue)
+    policy = policy_for(session, job.queue)
     ruleset = get_ruleset(session).select(policy.rule_tags)
 
     hits: list[RuleHit] = []

@@ -1,18 +1,29 @@
-"""Acting on a held CUPS job from the console.
+"""Driving the CUPS spooler from the API.
+
+Two jobs: acting on individual held jobs (release/cancel), and managing the queues
+themselves (create/delete/share) so printers can be administered from the console.
 
 The backend puts a job in `held` state by exiting 3. Releasing it means telling CUPS to
 resume it, which re-runs the backend from the top — hence the preflight check in
 routes_inspect.py, without which a released job would simply be held again.
 
 Modes:
-    local  shell out to lp/cancel (API runs on the print server)
-    ssh    same commands over ssh (API runs elsewhere)
+    local  shell out to lp/lpadmin/cancel. Honours CUPS_SERVER, so this also drives a
+           remote spooler over IPP — which is how the API container manages a
+           host-networked CUPS container.
+    ssh    same commands over ssh, for an API that cannot reach CUPS' IPP port
     none   record the decision only — for the lab and for tests
+
+Queue management is a privileged capability: it lets the console reconfigure the print
+server. It is restricted to the admin role and every change is written to
+PrinterRevision, but that is a real escalation over read-only DLP and worth knowing.
 """
 
 from __future__ import annotations
 
 import logging
+import os
+import re
 import shutil
 import subprocess
 
@@ -20,28 +31,29 @@ from ..config import get_settings
 
 log = logging.getLogger(__name__)
 
+# Queue names reach a shell-free argv, but CUPS itself rejects some characters and a
+# name with a slash or space produces confusing failures much later.
+QUEUE_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,127}$")
+ALLOWED_SCHEMES = {"ipp", "ipps", "socket", "lpd", "http", "https", "usb", "cups-pdf"}
+
 
 class CupsControlError(RuntimeError):
     pass
 
 
 def _mode() -> str:
-    import os
-
     return os.environ.get("JANUS_PRINT_CUPS_CONTROL", "none").lower()
 
 
 def _ssh_target() -> str:
-    import os
-
     return os.environ.get("JANUS_PRINT_CUPS_SSH", "")
 
 
-def _run(args: list[str]) -> None:
+def _run(args: list[str], *, check_output: bool = False) -> str:
     mode = _mode()
     if mode == "none":
         log.info("cups control disabled; would run: %s", " ".join(args))
-        return
+        return ""
 
     if mode == "ssh":
         target = _ssh_target()
@@ -52,13 +64,20 @@ def _run(args: list[str]) -> None:
         raise CupsControlError(f"{args[0]} not found on this host")
 
     try:
-        subprocess.run(args, check=True, capture_output=True, timeout=15)  # noqa: S603
+        completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
+            args, check=True, capture_output=True, timeout=30
+        )
     except subprocess.CalledProcessError as exc:
         raise CupsControlError(
             f"{' '.join(args)} failed: {exc.stderr.decode(errors='replace').strip()}"
         ) from exc
     except subprocess.TimeoutExpired as exc:
         raise CupsControlError(f"{' '.join(args)} timed out") from exc
+
+    return completed.stdout.decode(errors="replace") if check_output else ""
+
+
+# --- job control -------------------------------------------------------------
 
 
 def job_uri(queue: str, cups_job_id: str) -> str:
@@ -73,6 +92,203 @@ def release(queue: str, cups_job_id: str) -> None:
 def cancel(queue: str, cups_job_id: str) -> None:
     """Destroy a held job."""
     _run(["cancel", job_uri(queue, cups_job_id)])
+
+
+# --- queue management --------------------------------------------------------
+
+
+def validate_name(name: str) -> str:
+    if not QUEUE_NAME.match(name):
+        raise CupsControlError(
+            "queue name may contain only letters, digits, dot, underscore and hyphen"
+        )
+    return name
+
+
+def validate_device_uri(uri: str) -> str:
+    scheme, separator, rest = uri.partition("://")
+    if not separator or not rest:
+        raise CupsControlError("device URI must look like ipp://host/path or socket://host:9100")
+    if scheme.lower() not in ALLOWED_SCHEMES:
+        raise CupsControlError(
+            f"unsupported scheme {scheme!r}; use one of: {', '.join(sorted(ALLOWED_SCHEMES))}"
+        )
+    if scheme.lower() == "janus":
+        raise CupsControlError("give the real device URI; the janus:// wrapper is added for you")
+    return uri
+
+
+def janus_uri(device_uri: str) -> str:
+    scheme, _, rest = device_uri.partition("://")
+    return f"janus://{scheme}/{rest}"
+
+
+def create_queue(
+    name: str,
+    device_uri: str,
+    *,
+    model: str = "everywhere",
+    description: str = "",
+    location: str = "",
+    shared: bool = True,
+) -> list[str]:
+    """Create (or reconfigure) an inspected queue.
+
+    Two steps, and the order matters: CUPS cannot query a printer's capabilities through
+    the janus:// scheme, so the queue is first created against the real device to generate
+    drivers, then repointed at the interception backend. Doing it the other way round
+    yields a raw queue that sends PDF a printer cannot render, which manifests much later
+    as jobs hanging and unrelated jobs failing with server-error-busy.
+    """
+    validate_name(name)
+    validate_device_uri(device_uri)
+
+    # 1. real device, so CUPS can negotiate drivers
+    _run(["lpadmin", "-p", name, "-E", "-v", device_uri, "-m", model])
+
+    # 2. repoint at the interception backend, keeping the generated drivers
+    _run(["lpadmin", "-p", name, "-v", janus_uri(device_uri)])
+
+    if description:
+        _run(["lpadmin", "-p", name, "-D", description])
+    if location:
+        _run(["lpadmin", "-p", name, "-L", location])
+
+    warnings: list[str] = []
+
+    # Only inspected queues are ever advertised. A shared queue pointing straight at a
+    # device would hand clients a documented route around the inspector.
+    #
+    # CUPS refuses printer-is-shared over IPP ("Cannot change printer-is-shared for remote
+    # queues"), so this step cannot succeed when the API is on a different host from the
+    # spooler. The queue still prints and still inspects — it just will not be advertised
+    # over DNS-SD until sharing is applied locally. That is a discovery gap, not a
+    # correctness one, so it is reported rather than treated as a failure.
+    try:
+        set_shared(name, shared)
+    except CupsControlError as exc:
+        if "remote queues" in str(exc):
+            warnings.append(
+                "queue created, but CUPS will not set sharing over the network. It will "
+                "not be advertised for auto-discovery until sharing is applied on the "
+                "print server itself (restart the cups service, or use ssh control mode)."
+            )
+        else:
+            warnings.append(f"could not set sharing: {exc}")
+
+    _run(["cupsenable", name])
+    _run(["cupsaccept", name])
+    return warnings
+
+
+def delete_queue(name: str) -> None:
+    validate_name(name)
+    _run(["lpadmin", "-x", name])
+
+
+def set_shared(name: str, shared: bool) -> None:
+    validate_name(name)
+    _run(["lpadmin", "-p", name, "-o", f"printer-is-shared={'true' if shared else 'false'}"])
+
+
+def set_enabled(name: str, enabled: bool) -> None:
+    validate_name(name)
+    _run(["cupsenable" if enabled else "cupsdisable", name])
+    _run(["cupsaccept" if enabled else "cupsreject", name])
+
+
+def list_queues() -> dict[str, str]:
+    """Queue name -> device URI, as CUPS currently has it.
+
+    Used to reconcile: a queue configured here but missing in CUPS looks configured while
+    inspecting nothing.
+    """
+    output = _run(["lpstat", "-v"], check_output=True)
+    queues: dict[str, str] = {}
+    for line in output.splitlines():
+        # "device for office-printer: janus://ipp/10.0.0.5/ipp/print"
+        match = re.match(r"device for ([^:]+): (.+)", line.strip())
+        if match:
+            queues[match.group(1)] = match.group(2)
+    return queues
+
+
+def printer_state(name: str) -> dict[str, str]:
+    """What CUPS thinks of this queue: idle, processing, disabled, or not visible.
+
+    `lpstat -p` returns nothing for an unshared queue when asked from another host, because
+    CUPS only exposes shared printers remotely. Reporting that as "no response from cupsd"
+    sends an operator hunting a connectivity fault that does not exist, so it is
+    distinguished from a genuinely missing queue by cross-checking the device list.
+    """
+    validate_name(name)
+    output = _run(["lpstat", "-p", name], check_output=True).strip()
+
+    if output:
+        first = output.splitlines()[0]
+        for state in ("is idle", "now printing", "is processing", "disabled"):
+            if state in first:
+                return {"state": state.replace("is ", "").replace("now ", ""), "detail": first}
+        return {"state": "unknown", "detail": first}
+
+    try:
+        known = list_queues()
+    except CupsControlError as exc:
+        return {"state": "unknown", "detail": f"cupsd did not answer: {exc}"}
+
+    if name in known:
+        return {
+            "state": "not-visible",
+            "detail": "the queue exists but is not shared, so its status is not "
+            "published to other hosts. This does not affect printing.",
+        }
+    return {"state": "missing", "detail": "cupsd does not have a queue with this name"}
+
+
+def submit_file(queue: str, path: str, title: str) -> str:
+    """Print a file to a queue. Returns the CUPS request id, if it reported one."""
+    validate_name(queue)
+    output = _run(["lp", "-d", queue, "-t", title, path], check_output=True)
+    # "request id is office-printer-42 (1 file(s))"
+    match = re.search(r"request id is (\S+)", output)
+    return match.group(1) if match else ""
+
+
+LOOPBACK = {"localhost", "127.0.0.1", "::1", "ip6-localhost"}
+
+
+def device_endpoint(device_uri: str) -> tuple[str, int]:
+    """Host and port to probe for reachability, derived from the device URI.
+
+    Note the probe runs from wherever the API lives, while the device URI is written from
+    the spooler's point of view. For a routable address the two agree; for a loopback
+    address they do not, which is why callers reject those rather than probing themselves
+    and reporting a meaningless refusal.
+    """
+    scheme, _, rest = device_uri.partition("://")
+    scheme = scheme.lower()
+    hostport = rest.split("/", 1)[0]
+
+    if "@" in hostport:  # strip any credentials
+        hostport = hostport.rsplit("@", 1)[1]
+
+    if ":" in hostport:
+        host, _, port = hostport.rpartition(":")
+        try:
+            return host, int(port)
+        except ValueError:
+            pass
+    else:
+        host = hostport
+
+    default = {"ipp": 631, "ipps": 631, "http": 80, "https": 443, "socket": 9100, "lpd": 515}
+    if scheme not in default:
+        raise CupsControlError(f"cannot probe a {scheme}:// device")
+    return host, default[scheme]
+
+
+def available() -> bool:
+    return _mode() != "none"
 
 
 def describe() -> dict[str, str]:

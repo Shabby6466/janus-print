@@ -7,12 +7,13 @@
 <h1>{{ job.title or '(untitled)' }} <span class="pill {{ tone }}">{{ label }}</span></h1>
 <p class="sub">{{ job.username }} on {{ job.queue }} &middot; {{ job.created_at.strftime('%d %b %Y %H:%M:%S') }}</p>
 
-{% if job.state.value == 'held' %}
 <p>
-  <button class="btn primary" onclick="decide('{{ job.id }}','release')">Release to printer</button>
-  <button class="btn danger" onclick="decide('{{ job.id }}','deny')">Deny and cancel</button>
+  <a class="btn" href="/jobs/{{ job.id }}/view">View pages</a>
+  {% if job.state.value == 'held' and user.role != 'viewer' %}
+    <button class="btn primary" onclick="decide('{{ job.id }}','release')">Release to printer</button>
+    <button class="btn danger" onclick="decide('{{ job.id }}','deny')">Deny and cancel</button>
+  {% endif %}
 </p>
-{% endif %}
 
 {% if job.state.value == 'failed_open' %}
 <div class="banner gap">

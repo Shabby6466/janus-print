@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% set active = 'queue' %}
+{% block title %}Viewing {{ job.title or job.id }} — janus-print{% endblock %}
+
+{% block content %}
+<h1>{{ job.title or '(untitled)' }}</h1>
+<p class="sub">
+  {{ job.username }} on {{ job.queue }} &middot;
+  <a href="/jobs/{{ job.id }}">back to job detail</a>
+</p>
+
+<div class="banner info">
+  Rendered page images, watermarked with your username and stamped with the time. Every page
+  you open is recorded in the <a href="/audit">archive access log</a>. The original file is
+  not served here — exporting it needs an approved content request.
+</div>
+
+<div id="status" class="note"></div>
+
+<div style="margin:14px 0">
+  <button class="btn" onclick="showPage(current - 1)">Previous</button>
+  <span class="mono" id="pagelabel" style="margin:0 10px"></span>
+  <button class="btn" onclick="showPage(current + 1)">Next</button>
+</div>
+
+<div class="panel" style="padding:10px; overflow-x:auto">
+  <img id="page" alt="Document page" style="max-width:100%; display:block; margin:0 auto; background:#fff">
+</div>
+
+{% if job.state.value == 'held' and user.role != 'viewer' %}
+<p style="margin-top:18px">
+  <button class="btn primary" onclick="decide('{{ job.id }}','release')">Release to printer</button>
+  <button class="btn danger" onclick="decide('{{ job.id }}','deny')">Deny and cancel</button>
+</p>
+{% endif %}
+
+<script>
+let current = 1;
+let pages = 0;
+
+async function init() {
+  const info = await fetch(`/api/v1/jobs/{{ job.id }}/preview`).then(r => r.json());
+  const status = document.getElementById('status');
+  if (!info.allowed) {
+    status.innerHTML = `<span class="pill bad">not viewable</span> ${info.reason || ''}`;
+    return;
+  }
+  pages = info.pages;
+  showPage(1);
+}
+
+function showPage(n) {
+  if (!pages || n < 1 || n > pages) return;
+  current = n;
+  document.getElementById('pagelabel').textContent = `page ${n} of ${pages}`;
+  document.getElementById('page').src = `/api/v1/jobs/{{ job.id }}/preview/${n}?t=${Date.now()}`;
+}
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'ArrowLeft') showPage(current - 1);
+  if (event.key === 'ArrowRight') showPage(current + 1);
+});
+
+init();
+</script>
+{% endblock %}

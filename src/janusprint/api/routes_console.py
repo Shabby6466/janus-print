@@ -12,7 +12,8 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..config import get_printer_policies, get_settings
+from ..config import get_settings
+from .. import printers as printer_store
 from ..db import get_session
 from ..inspector import store as rule_store
 from ..inspector.engine import get_ruleset
@@ -28,6 +29,7 @@ from ..models import (
 )
 from . import cups_control
 from .auth import (
+    ROLES,
     SESSION_COOKIE,
     authenticate,
     create_session,
@@ -201,7 +203,7 @@ def job_view(
             .order_by(ContentRequest.created_at.desc())
         )
     )
-    policy = get_printer_policies().for_queue(job.queue)
+    policy = printer_store.policy_for(session, job.queue)
     return _render(
         request,
         "job.html",
@@ -211,6 +213,35 @@ def job_view(
         policy=policy,
         events=sorted(job.events, key=lambda e: e.at),
     )
+
+
+@router.get("/jobs/{job_id}/view")
+def job_viewer(
+    job_id: str,
+    request: Request,
+    session: Session = Depends(get_session),
+    user: User | None = Depends(current_user_optional),
+):
+    if user is None:
+        return _login_redirect(f"/jobs/{job_id}/view")
+    job = session.get(Job, job_id)
+    if job is None:
+        return _render(request, "notfound.html", user, what=f"job {job_id}")
+    return _render(request, "job_view.html", user, job=job)
+
+
+@router.get("/users")
+def users_view(
+    request: Request,
+    session: Session = Depends(get_session),
+    user: User | None = Depends(current_user_optional),
+):
+    if user is None:
+        return _login_redirect("/users")
+    if user.role != "admin":
+        return _render(request, "notfound.html", user, what="that page (admin only)")
+    users = list(session.scalars(select(User).order_by(User.username)))
+    return _render(request, "users.html", user, users=users, roles=list(ROLES))
 
 
 @router.get("/rules")
@@ -317,18 +348,48 @@ def audit_view(
     return _render(request, "audit.html", user, rows=rows, pending=pending)
 
 
-@router.get("/policies")
-def policies_view(
-    request: Request, user: User | None = Depends(current_user_optional)
+@router.get("/printers")
+def printers_view(
+    request: Request,
+    session: Session = Depends(get_session),
+    user: User | None = Depends(current_user_optional),
 ):
     if user is None:
-        return _login_redirect("/policies")
-    policies = get_printer_policies()
+        return _login_redirect("/printers")
+    from ..models import PrinterQueue
+
+    rows = session.scalars(select(PrinterQueue).order_by(PrinterQueue.name)).all()
+    printers = [
+        {
+            "name": r.name,
+            "device_uri": r.device_uri,
+            "janus_uri": r.janus_uri if r.device_uri else "",
+            "description": r.description,
+            "location": r.location,
+            "deep_scan_required": r.deep_scan_required,
+            "fail_mode": r.fail_mode,
+            "on_unreadable": r.on_unreadable,
+            "rule_tags": r.rule_tags or ["*"],
+            "shared": r.shared,
+            "enabled": r.enabled,
+            "cups_state": r.cups_state,
+            "cups_error": r.cups_error,
+        }
+        for r in rows
+    ]
     return _render(
         request,
-        "policies.html",
+        "printers.html",
         user,
-        default=policies.default,
-        queues=policies.queues,
+        printers=printers,
         cups=cups_control.describe(),
+        reconcile=printer_store.reconcile(session),
     )
+
+
+@router.get("/policies")
+def policies_view(user: User | None = Depends(current_user_optional)):
+    """Superseded by /printers, which shows the same policy alongside CUPS state."""
+    if user is None:
+        return _login_redirect("/printers")
+    return RedirectResponse("/printers", status_code=status.HTTP_307_TEMPORARY_REDIRECT)

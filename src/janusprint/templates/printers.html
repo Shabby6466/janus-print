@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% set active = 'printers' %}
+{% block title %}Printers — janus-print{% endblock %}
+
+{% block content %}
+<h1>Printers</h1>
+<p class="sub">
+  {{ printers|length }} managed {{ 'queue' if printers|length == 1 else 'queues' }} &middot;
+  CUPS control: <span class="mono">{{ cups.mode }}</span>
+</p>
+
+{% if cups.mode == 'none' %}
+<div class="banner gap">
+  <strong>CUPS control is disabled.</strong> Queues can be recorded here but will not be
+  created on the print server. Set <code>JANUS_PRINT_CUPS_CONTROL=local</code> (with
+  <code>CUPS_SERVER</code> pointing at the spooler) or <code>ssh</code>.
+</div>
+{% endif %}
+
+{% if reconcile.missing_in_cups %}
+<div class="banner gap">
+  <strong>Configured here but missing in CUPS:</strong>
+  <span class="mono">{{ reconcile.missing_in_cups | join(', ') }}</span>.
+  These look protected but inspect nothing — no queue exists to print to.
+</div>
+{% endif %}
+{% if reconcile.unmanaged_in_cups %}
+<div class="banner info">
+  <strong>In CUPS but not managed here:</strong>
+  <span class="mono">{{ reconcile.unmanaged_in_cups | join(', ') }}</span>.
+  These run the default policy — fail-open, all rules.
+</div>
+{% endif %}
+
+{% if user.role == 'admin' %}
+<div class="panel" style="margin-bottom:20px">
+  <h3>Add a printer</h3>
+  <div class="row" style="gap:12px">
+    <div style="flex:1">
+      <label for="np_name">Queue name</label>
+      <input id="np_name" type="text" placeholder="finance-mfp">
+    </div>
+    <div style="flex:2">
+      <label for="np_uri">Printer address</label>
+      <input id="np_uri" type="text" placeholder="ipp://172.18.104.60/ipp/print">
+    </div>
+    <div style="flex:1">
+      <label for="np_location">Location</label>
+      <input id="np_location" type="text" placeholder="2nd floor, finance">
+    </div>
+  </div>
+
+  <div class="row" style="gap:12px">
+    <div style="flex:1">
+      <label for="np_fail">Fail mode</label>
+      <select id="np_fail">
+        <option value="open">open — keep printing if the inspector is down</option>
+        <option value="closed">closed — stop the job</option>
+      </select>
+    </div>
+    <div style="flex:1">
+      <label for="np_unreadable">Unreadable documents</label>
+      <select id="np_unreadable">
+        <option value="log">log</option>
+        <option value="hold">hold</option>
+        <option value="block">block</option>
+      </select>
+    </div>
+    <div style="flex:1">
+      <label for="np_tags">Rule tags</label>
+      <input id="np_tags" type="text" value="*" placeholder="pii, hr">
+    </div>
+  </div>
+
+  <label><input id="np_deep" type="checkbox" style="width:auto"> Hold image-only pages until OCR clears them</label>
+  <label><input id="np_shared" type="checkbox" style="width:auto" checked> Advertise on the network (Bonjour/DNS-SD)</label>
+  <label for="np_note">Reason (recorded permanently)</label>
+  <input id="np_note" type="text" placeholder="new finance floor MFP">
+
+  <div id="addErr" class="err" style="white-space:pre-wrap"></div>
+  <button class="btn primary" onclick="addPrinter()">Add printer</button>
+  <p class="note" style="margin-top:8px">
+    The printer must be powered on and reachable — CUPS queries its capabilities while
+    creating the queue. The janus:// interception wrapper is applied automatically.
+  </p>
+</div>
+{% endif %}
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>Queue</th><th>Device</th><th>Deep scan</th><th>Fail mode</th><th>Rule tags</th><th>Shared</th><th>CUPS</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for p in printers %}
+      <tr>
+        <td class="wrap">
+          <strong>{{ p.name }}</strong>
+          {% if p.location %}<div class="note">{{ p.location }}</div>{% endif %}
+          {% if p.description %}<div class="note">{{ p.description }}</div>{% endif %}
+        </td>
+        <td class="mono" style="font-size:11px">
+          {{ p.device_uri or '(policy only)' }}
+          {% if p.janus_uri %}<div class="note">via {{ p.janus_uri }}</div>{% endif %}
+        </td>
+        <td>
+          <select onchange="patch('{{ p.name }}', {deep_scan_required: this.value === 'yes'})" style="margin:0;width:auto">
+            <option value="no" {{ 'selected' if not p.deep_scan_required }}>async</option>
+            <option value="yes" {{ 'selected' if p.deep_scan_required }}>required</option>
+          </select>
+        </td>
+        <td>
+          <select onchange="patch('{{ p.name }}', {fail_mode: this.value})" style="margin:0;width:auto">
+            <option value="open" {{ 'selected' if p.fail_mode == 'open' }}>open</option>
+            <option value="closed" {{ 'selected' if p.fail_mode == 'closed' }}>closed</option>
+          </select>
+        </td>
+        <td class="mono">{{ p.rule_tags | join(', ') }}</td>
+        <td>
+          <span class="pill {{ 'ok' if p.shared else 'muted' }}">{{ 'yes' if p.shared else 'no' }}</span>
+        </td>
+        <td>
+          <span class="pill {{ 'ok' if p.cups_state == 'ok' else 'warn' if p.cups_state == 'warning' else 'muted' if p.cups_state in ('external','unmanaged') else 'bad' }}">
+            {{ p.cups_state }}
+          </span>
+          {% if p.cups_error %}<div class="note">{{ p.cups_error[:160] }}</div>{% endif %}
+        </td>
+        <td>
+          {% if user.role == 'admin' %}
+            <button class="btn" onclick="testConnection('{{ p.name }}')">Test</button>
+            <button class="btn" onclick="testPage('{{ p.name }}')">Test page</button>
+            <button class="btn ghost" onclick="patch('{{ p.name }}', {shared: {{ 'false' if p.shared else 'true' }}})">
+              {{ 'Unshare' if p.shared else 'Share' }}
+            </button>
+            <button class="btn danger" onclick="removePrinter('{{ p.name }}')">Remove</button>
+          {% endif %}
+          <div class="note mono" id="diag-{{ p.name }}"></div>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="empty">No printers configured.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+async function call(url, method, body) {
+  const response = await fetch(url, {
+    method: method,
+    headers: {'Content-Type': 'application/json'},
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (!response.ok) {
+    let detail = response.statusText;
+    try { detail = (await response.json()).detail || detail; } catch (e) {}
+    return {ok: false, detail: typeof detail === 'string' ? detail : JSON.stringify(detail)};
+  }
+  return {ok: true, body: await response.json()};
+}
+
+async function addPrinter() {
+  const error = document.getElementById('addErr');
+  error.textContent = '';
+  const result = await call('/api/v1/printers', 'POST', {
+    name: document.getElementById('np_name').value.trim(),
+    device_uri: document.getElementById('np_uri').value.trim(),
+    location: document.getElementById('np_location').value.trim(),
+    fail_mode: document.getElementById('np_fail').value,
+    on_unreadable: document.getElementById('np_unreadable').value,
+    rule_tags: document.getElementById('np_tags').value.split(',').map(s => s.trim()).filter(Boolean),
+    deep_scan_required: document.getElementById('np_deep').checked,
+    shared: document.getElementById('np_shared').checked,
+    note: document.getElementById('np_note').value.trim()
+  });
+  if (!result.ok) { error.textContent = result.detail; return; }
+  if (result.body.cups_state === 'error') {
+    alert('Queue recorded, but CUPS refused it:\n\n' + result.body.cups_error);
+  }
+  location.reload();
+}
+
+async function patch(name, fields) {
+  const result = await call(`/api/v1/printers/${name}`, 'PATCH', fields);
+  if (!result.ok) alert(result.detail);
+  location.reload();
+}
+
+async function testConnection(name) {
+  const out = document.getElementById('diag-' + name);
+  out.textContent = 'checking...';
+  const result = await call(`/api/v1/printers/${name}/test-connection`, 'POST');
+  if (!result.ok) { out.innerHTML = `<span class="pill bad">error</span> ${result.detail}`; return; }
+
+  const body = result.body;
+  const device = body.device_reachable === true
+    ? `<span class="pill ok">device reachable</span> ${body.endpoint} in ${body.latency_ms}ms`
+    : body.device_reachable === false
+      ? `<span class="pill bad">unreachable</span> ${body.endpoint || ''} — ${body.device_error || ''}`
+      : `<span class="pill muted">not probed</span> ${body.device_error || ''}`;
+  const cups = body.cups && body.cups.state
+    ? `<span class="pill ${body.cups.state === 'idle' ? 'ok' : 'warn'}">cups: ${body.cups.state}</span>`
+    : '';
+  out.innerHTML = device + ' ' + cups;
+}
+
+async function testPage(name) {
+  const note = prompt(`Send a test page to ${name}? It is inspected like any other job.\n\nOptional note:`);
+  if (note === null) return;
+  const out = document.getElementById('diag-' + name);
+  out.textContent = 'submitting...';
+  const result = await call(`/api/v1/printers/${name}/test-page`, 'POST', {note: note});
+  if (!result.ok) { out.innerHTML = `<span class="pill bad">failed</span> ${result.detail}`; return; }
+  out.innerHTML = `<span class="pill ok">submitted</span> ${result.body.cups_request_id || ''} — check the printer, and <a href="/queue?state=all">the queue</a>`;
+}
+
+async function removePrinter(name) {
+  const note = prompt(`Removing ${name}. Reason (recorded permanently):`);
+  if (note === null) return;
+  const result = await call(`/api/v1/printers/${name}?note=${encodeURIComponent(note)}`, 'DELETE');
+  if (!result.ok) { alert(result.detail); return; }
+  location.reload();
+}
+</script>
+{% endblock %}

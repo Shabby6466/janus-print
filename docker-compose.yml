@@ -63,6 +63,10 @@ services:
       # itself and CUPS_SERVER is unset.
       JANUS_PRINT_CUPS_CONTROL: local
       CUPS_SERVER: cups
+    volumes:
+      # Editable without a rebuild: queue policy and the seed rule packs.
+      - ./config:/app/config:ro
+      - ./rules:/app/rules:ro
     ports:
       # 8088 on the host: 8080 is commonly already taken by a local dev server.
       - "8088:8080"
@@ -75,6 +79,9 @@ services:
       context: .
       dockerfile: docker/api/Dockerfile
     command: ["janus-print-worker"]
+    volumes:
+      - ./config:/app/config:ro
+      - ./rules:/app/rules:ro
     # The image's healthcheck probes the HTTP API, which the worker does not serve.
     healthcheck:
       disable: true

@@ -48,8 +48,10 @@
         <td class="wrap">{{ job.verdict_reason }}</td>
         <td class="mono">{{ '%.2f'|format(job.score) }}</td>
         <td>
-          <button class="btn primary" onclick="decide('{{ job.id }}','release')">Release</button>
-          <button class="btn danger" onclick="decide('{{ job.id }}','deny')">Deny</button>
+          {% if user.role != 'viewer' %}
+            <button class="btn primary" onclick="decide('{{ job.id }}','release')">Release</button>
+            <button class="btn danger" onclick="decide('{{ job.id }}','deny')">Deny</button>
+          {% endif %}
         </td>
       </tr>
     {% endfor %}

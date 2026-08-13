@@ -19,10 +19,16 @@ def get_engine() -> Engine:
     url = get_settings().database_url
     kwargs: dict = {"pool_pre_ping": True, "future": True}
     if url.startswith("sqlite"):
-        # Tests run against in-memory SQLite; keep one connection so the schema persists.
-        from sqlalchemy.pool import StaticPool
+        # A shared in-memory database only survives on a single connection, so it needs
+        # StaticPool. A file-backed one must NOT use StaticPool: the deep-scan fallback
+        # runs in a background thread when Redis is down, and two threads sharing one
+        # SQLAlchemy connection corrupt each other's result rows.
+        in_memory = ":memory:" in url or url.endswith("sqlite://")
+        kwargs = {"connect_args": {"check_same_thread": False}}
+        if in_memory:
+            from sqlalchemy.pool import StaticPool
 
-        kwargs = {"connect_args": {"check_same_thread": False}, "poolclass": StaticPool}
+            kwargs["poolclass"] = StaticPool
     engine = create_engine(url, **kwargs)
 
     if url.startswith("sqlite"):

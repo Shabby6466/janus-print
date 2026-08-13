@@ -17,7 +17,14 @@ from ..db import get_engine, init_db, session_scope
 from ..inspector.engine import get_ruleset
 from ..inspector.rules import test_fixtures
 from ..schemas import HealthOut
-from . import routes_admin, routes_console, routes_inspect, routes_jobs
+from . import (
+    routes_admin,
+    routes_console,
+    routes_inspect,
+    routes_jobs,
+    routes_printers,
+    routes_users,
+)
 from .auth import ensure_admin_user
 
 log = logging.getLogger(__name__)
@@ -35,8 +42,14 @@ async def lifespan(app: FastAPI):
     # restart can't silently revert an operator's edits.
     from ..inspector.store import seed_from_yaml
 
+    from .. import printers as printer_store
+
     with session_scope() as session:
         seeded = seed_from_yaml(session)
+        printer_store.seed_from_yaml(session)
+        # A queue created by hand with lpadmin would otherwise be invisible here while
+        # silently running the default policy.
+        printer_store.adopt_existing(session)
     if seeded:
         log.info("seeded %d rules from the shipped YAML packs", seeded)
 
@@ -85,6 +98,8 @@ def create_app() -> FastAPI:
     app.include_router(routes_inspect.router, prefix="/api/v1")
     app.include_router(routes_jobs.router, prefix="/api/v1")
     app.include_router(routes_admin.router, prefix="/api/v1")
+    app.include_router(routes_users.router, prefix="/api/v1")
+    app.include_router(routes_printers.router, prefix="/api/v1")
     app.include_router(routes_console.router)
 
     static_dir = Path(__file__).resolve().parent.parent / "static"

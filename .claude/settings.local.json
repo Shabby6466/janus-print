@@ -4,7 +4,19 @@
       "Bash(python3 -V)",
       "Bash(docker compose *)",
       "Read(//opt/homebrew/bin/**)",
-      "Bash(brew --version)"
+      "Bash(brew --version)",
+      "Bash(curl -s -b /tmp/jp2.cookies http://127.0.0.1:8088/rules/new)",
+      "Bash(curl -s -b /tmp/jp2.cookies -X DELETE http://127.0.0.1:8088/api/v1/rules/ui-smoke-badge?note=smoke%20test%20cleanup)",
+      "Bash(curl -s -b /tmp/jp2.cookies -X DELETE http://127.0.0.1:8088/api/v1/rules/contractor-badge?note=smoke%20test%20cleanup)",
+      "Bash(docker run *)",
+      "Bash(python3 -)",
+      "Bash(docker build *)",
+      "Bash(rm -f /tmp/srv.cookies)",
+      "Bash(curl -s --max-time 8 -o /dev/null -w 'console reachable: %{http_code}\\\\n' http://172.18.100.3:8088/login)",
+      "Bash(curl -s --max-time 8 -c /tmp/srv.cookies -o /dev/null -X POST http://172.18.100.3:8088/login -d 'username=admin&password=janus-print&next=/')",
+      "Bash(curl -s --max-time 8 http://172.18.100.3:8088/api/v1/health)",
+      "Bash(python3 -c ' *)",
+      "Bash(docker compose exec *)"
     ]
   }
 }

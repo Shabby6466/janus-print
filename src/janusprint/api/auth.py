@@ -3,10 +3,15 @@
 scrypt from the stdlib rather than a bcrypt dependency — one fewer native wheel on a box
 that sits in the print path.
 
-Roles:
-    analyst   review the queue, release/deny jobs, request content access
+Roles, least-privileged first:
+
+    viewer    read the queue, jobs, rules and policies. Cannot decide anything.
+    analyst   everything above, plus release/deny held jobs and request content access
     approver  everything above, plus approving someone else's content request
-    admin     everything, plus users, rules reload, and document registration
+    admin     everything, plus user management, rule editing, and document registration
+
+Ranked, so `require_role("analyst")` admits analyst, approver and admin. The ranking is
+the whole model — there are no per-endpoint permission grants to drift out of sync.
 """
 
 from __future__ import annotations
@@ -27,7 +32,8 @@ from ..models import Session as SessionRow
 from ..models import User
 
 SESSION_COOKIE = "janus_print_session"
-ROLE_RANK = {"analyst": 1, "approver": 2, "admin": 3}
+ROLE_RANK = {"viewer": 0, "analyst": 1, "approver": 2, "admin": 3}
+ROLES = tuple(ROLE_RANK)
 
 _SCRYPT = {"n": 2**14, "r": 8, "p": 1, "dklen": 32}
 

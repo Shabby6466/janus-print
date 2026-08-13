@@ -15,8 +15,11 @@
     <a href="/queue" class="{{ 'active' if active == 'queue' }}">Queue</a>
     <a href="/rules" class="{{ 'active' if active == 'rules' }}">Rules</a>
     <a href="/documents" class="{{ 'active' if active == 'documents' }}">Documents</a>
-    <a href="/policies" class="{{ 'active' if active == 'policies' }}">Policies</a>
+    <a href="/printers" class="{{ 'active' if active == 'printers' }}">Printers</a>
     <a href="/audit" class="{{ 'active' if active == 'audit' }}">Audit</a>
+    {% if user.role == 'admin' %}
+      <a href="/users" class="{{ 'active' if active == 'users' }}">Users</a>
+    {% endif %}
   </nav>
   <div class="who">{{ user.username }} &middot; {{ user.role }} &middot; <a href="/logout">sign out</a></div>
 </header>

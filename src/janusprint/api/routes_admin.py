@@ -247,6 +247,36 @@ def run_fixture_tests(_user: User = Depends(current_user)) -> dict:
     }
 
 
+@router.get("/policies")
+def list_policies(_user: User = Depends(current_user)) -> dict:
+    """Effective per-queue policy, including queues with no explicit entry."""
+    from ..config import get_printer_policies
+
+    policies = get_printer_policies()
+    return {
+        "default": policies.default.model_dump(),
+        "queues": {name: policy.model_dump() for name, policy in policies.queues.items()},
+    }
+
+
+@router.post("/policies/reload")
+def reload_policies(_user: User = Depends(require_role("admin"))) -> dict:
+    """Re-read config/printers.yaml without restarting.
+
+    Policy is cached for the process lifetime, so adding a printer entry otherwise appears
+    to do nothing until the next deploy — and the queue silently runs on the default
+    policy in the meantime.
+    """
+    from ..config import get_printer_policies, reset_caches
+
+    reset_caches()
+    policies = get_printer_policies()
+    return {
+        "queues_loaded": len(policies.queues),
+        "queues": sorted(policies.queues),
+    }
+
+
 @router.get("/documents")
 def list_documents(
     session: Session = Depends(get_session), _user: User = Depends(current_user)

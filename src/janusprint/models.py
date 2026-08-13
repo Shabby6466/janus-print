@@ -243,6 +243,66 @@ class RuleRevision(Base):
     snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class PrinterQueue(Base):
+    """A managed CUPS queue and its inspection policy.
+
+    One row per physical printer. `device_uri` is the real device (ipp://, socket://);
+    the janus:// form handed to CUPS is derived from it, so the interception wrapper can
+    never be forgotten when a queue is created from the UI.
+    """
+
+    __tablename__ = "printer_queues"
+
+    name: Mapped[str] = mapped_column(String(128), primary_key=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    location: Mapped[str] = mapped_column(String(256), default="")
+
+    # Real device, e.g. ipp://172.18.104.60/ipp/print or socket://172.18.104.9:9100
+    device_uri: Mapped[str] = mapped_column(String(512))
+    ppd_model: Mapped[str] = mapped_column(String(128), default="everywhere")
+
+    # --- inspection policy (mirrors config/printers.yaml) --------------------
+    deep_scan_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    fail_mode: Mapped[str] = mapped_column(String(8), default="open")  # open|closed
+    on_unreadable: Mapped[str] = mapped_column(String(16), default="log")
+    rule_tags: Mapped[list] = mapped_column(JSON, default=lambda: ["*"])
+
+    # --- lifecycle ----------------------------------------------------------
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    shared: Mapped[bool] = mapped_column(Boolean, default=True)  # advertised over DNS-SD
+    # Whether the CUPS queue itself was created successfully. A row that exists here but
+    # not in CUPS is worse than useless — it looks configured while nothing is inspected.
+    cups_state: Mapped[str] = mapped_column(String(16), default="pending")
+    cups_error: Mapped[str] = mapped_column(Text, default="")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
+    updated_by: Mapped[str] = mapped_column(String(128), default="system")
+
+    @property
+    def janus_uri(self) -> str:
+        """Wrap the real device URI for the interception backend."""
+        scheme, _, rest = self.device_uri.partition("://")
+        return f"janus://{scheme}/{rest}"
+
+
+class PrinterRevision(Base):
+    """Every change to a queue or its policy. Loosening a printer's policy is a security
+    event, so it stays answerable after the fact."""
+
+    __tablename__ = "printer_revisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    queue: Mapped[str] = mapped_column(String(128), index=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    actor: Mapped[str] = mapped_column(String(128))
+    change: Mapped[str] = mapped_column(String(16))
+    note: Mapped[str] = mapped_column(Text, default="")
+    snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 class User(Base):
     __tablename__ = "users"
 

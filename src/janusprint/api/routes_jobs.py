@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..archive import preview
 from ..archive.store import get_archive
 from ..bridge.cef import get_bridge
 from ..config import get_settings
@@ -85,7 +86,7 @@ def release_job(
     decision: DecisionRequest,
     request: Request,
     session: Session = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_role("analyst")),
 ) -> Job:
     """Let a held job print. The reason is mandatory and permanent."""
     job = _get_job(session, job_id)
@@ -128,7 +129,7 @@ def deny_job(
     decision: DecisionRequest,
     request: Request,
     session: Session = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_role("analyst")),
 ) -> Job:
     job = _get_job(session, job_id)
     if job.state != JobState.held:
@@ -171,7 +172,7 @@ def request_content(
     job_id: str,
     decision: DecisionRequest,
     session: Session = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_role("analyst")),
 ) -> ContentRequest:
     """Ask to read the archived document. A second person has to approve (PLAN.md §6)."""
     job = _get_job(session, job_id)
@@ -343,4 +344,97 @@ def download_content(
         content=data,
         media_type="application/octet-stream",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# --- rendered previews -------------------------------------------------------
+
+
+def _load_body(session: Session, job: Job) -> bytes:
+    if job.purged_at is not None or not job.archive_key or job.wrapped_key is None:
+        raise HTTPException(status.HTTP_410_GONE, "archived content has been purged")
+    return get_archive().load(job.archive_key, job.wrapped_key)
+
+
+def _preview_gate(session: Session, job: Job, user: User) -> str | None:
+    """Return the grant id authorising this preview, or None if triage rules allow it.
+
+    Raises 403 when neither applies.
+    """
+    if preview.preview_allowed_without_grant(job.state.value):
+        return None
+    if not get_settings().require_dual_approval_for_content:
+        return None
+    grant = _valid_grant(session, job.id, user.username)
+    if grant is None:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "this job is no longer in review — an approved content request is required",
+        )
+    return grant.id
+
+
+@router.get("/{job_id}/preview")
+def preview_info(
+    job_id: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(current_user),
+) -> dict:
+    """Page count and whether this viewer may see the pages."""
+    job = _get_job(session, job_id)
+    try:
+        grant_id = _preview_gate(session, job, user)
+    except HTTPException:
+        return {"job_id": job_id, "allowed": False, "pages": job.page_count, "reason": "approval required"}
+
+    try:
+        pages = preview.page_count(_load_body(session, job))
+    except preview.PreviewUnavailable as exc:
+        return {"job_id": job_id, "allowed": False, "pages": 0, "reason": str(exc)}
+
+    return {
+        "job_id": job_id,
+        "allowed": True,
+        "pages": min(pages, preview.MAX_PREVIEW_PAGES),
+        "grant": grant_id,
+        "watermarked": True,
+    }
+
+
+@router.get("/{job_id}/preview/{page}")
+def preview_page(
+    job_id: str,
+    page: int,
+    request: Request,
+    session: Session = Depends(get_session),
+    user: User = Depends(current_user),
+) -> Response:
+    """One watermarked page image. Every render is audited individually."""
+    job = _get_job(session, job_id)
+    grant_id = _preview_gate(session, job, user)
+    data = _load_body(session, job)
+
+    stamp = f"{user.username} · {job.id[:12]} · {datetime.now(UTC):%Y-%m-%d %H:%M} UTC"
+    try:
+        image = preview.render_page(data, page, watermark=stamp)
+    except preview.PreviewUnavailable as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+
+    _audit(
+        session,
+        job,
+        user.username,
+        "preview",
+        request,
+        grant_id,
+        detail=f"page {page}" + ("" if grant_id else " (held-job triage)"),
+    )
+    session.flush()
+
+    return Response(
+        content=image,
+        media_type="image/png",
+        # Never cached: a preview must not linger in a browser cache after the grant
+        # expires or the reviewer's role is revoked.
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"},
     )
