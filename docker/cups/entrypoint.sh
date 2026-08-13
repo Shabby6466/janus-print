@@ -18,6 +18,10 @@ ENABLE_DNSSD="${ENABLE_DNSSD:-false}"
 # Who may submit and administer. @LOCAL means any address on the server's own subnet,
 # which is the right default for an office print server. "all" is lab-only.
 CUPS_ALLOW_FROM="${CUPS_ALLOW_FROM:-@LOCAL}"
+# The lab queues (sink-raw, office-laser, finance-laser) print to a virtual PDF sink, not
+# to hardware. Set false on a real print server, or they reappear on every restart after
+# you delete them.
+CREATE_LAB_QUEUES="${CREATE_LAB_QUEUES:-true}"
 
 cat > /etc/janus-print/backend.conf <<EOF
 [backend]
@@ -74,23 +78,28 @@ if ! lpstat -r 2>/dev/null | grep -q "is running"; then
   exit 1
 fi
 
-# The stand-in for a real device. In production this is the printer's own ipp:// URI.
-lpadmin -p sink-raw -E -v cups-pdf:/ -m drv:///cupsfilters.drv/pxlcolor.ppd 2>/dev/null \
-  || lpadmin -p sink-raw -E -v cups-pdf:/ -m everywhere 2>/dev/null \
-  || lpadmin -p sink-raw -E -v cups-pdf:/ -m raw
+if [ "${CREATE_LAB_QUEUES}" = "true" ]; then
+  # The stand-in for a real device. In production this is the printer's own ipp:// URI.
+  lpadmin -p sink-raw -E -v cups-pdf:/ -m drv:///cupsfilters.drv/pxlcolor.ppd 2>/dev/null \
+    || lpadmin -p sink-raw -E -v cups-pdf:/ -m everywhere 2>/dev/null \
+    || lpadmin -p sink-raw -E -v cups-pdf:/ -m raw
 
-# Inspected queues. The janus backend strips its own prefix and execs the real backend
-# with the same argv, so janus://ipp/localhost/printers/sink-raw becomes
-# ipp://localhost/printers/sink-raw — the same ipp backend a real printer would use.
-SINK="janus://ipp/localhost/printers/sink-raw"
-lpadmin -p office-laser -E -v "${SINK}" -m everywhere 2>/dev/null \
-  || lpadmin -p office-laser -E -v "${SINK}" -m raw
-lpadmin -p finance-laser -E -v "${SINK}" -m everywhere 2>/dev/null \
-  || lpadmin -p finance-laser -E -v "${SINK}" -m raw
+  # Inspected queues. The janus backend strips its own prefix and execs the real backend
+  # with the same argv, so janus://ipp/localhost/printers/sink-raw becomes
+  # ipp://localhost/printers/sink-raw — the same ipp backend a real printer would use.
+  SINK="janus://ipp/localhost/printers/sink-raw"
+  lpadmin -p office-laser -E -v "${SINK}" -m everywhere 2>/dev/null \
+    || lpadmin -p office-laser -E -v "${SINK}" -m raw
+  lpadmin -p finance-laser -E -v "${SINK}" -m everywhere 2>/dev/null \
+    || lpadmin -p finance-laser -E -v "${SINK}" -m raw
 
-cupsenable office-laser finance-laser sink-raw || true
-cupsaccept office-laser finance-laser sink-raw || true
-lpadmin -d office-laser
+  cupsenable office-laser finance-laser sink-raw || true
+  cupsaccept office-laser finance-laser sink-raw || true
+  lpadmin -d office-laser
+  echo "== lab queues created =="
+else
+  echo "== lab queues disabled (CREATE_LAB_QUEUES=false) =="
+fi
 
 # A queue is only advertised over DNS-SD if it is explicitly shared, and recent CUPS
 # defaults that to false — discovery silently does nothing without this.
@@ -117,7 +126,7 @@ if [ "${ENABLE_DNSSD}" = "true" ]; then
   echo "== hidden (direct to device):${hidden:- none} =="
 fi
 
-echo "== lab queues ready =="
+echo "== queues ready =="
 lpstat -v
 
 wait "${CUPSD_PID}"

@@ -83,6 +83,12 @@ Requirements and consequences, all of them load-bearing:
   backend are shared; advertising the device queue would let clients print straight to the
   printer and skip inspection.
 
+bash```
+ docker compose exec cups lpadmin -x office-laser
+  docker compose exec cups lpadmin -x finance-laser
+  docker compose exec cups lpadmin -x sink-raw
+```  
+
 ### Windows — push the queue
 
 ```powershell

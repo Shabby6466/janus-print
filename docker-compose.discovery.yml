@@ -22,6 +22,8 @@ services:
     network_mode: host
     environment:
       ENABLE_DNSSD: "true"
+      # Real deployment: do not recreate the virtual-sink lab queues on every restart.
+      CREATE_LAB_QUEUES: "false"
       # Restrict submission and administration to the office subnet. @LOCAL means any
       # address on the server's own subnet; replace with an explicit CIDR to be tighter.
       CUPS_ALLOW_FROM: "@LOCAL"
