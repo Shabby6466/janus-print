@@ -354,3 +354,34 @@ class TestDiagnostics:
         assert authed_client.post(
             "/api/v1/printers/finance-mfp/test-page", json={}
         ).status_code == 403
+
+
+class TestOrphanedRows:
+    def test_row_for_a_missing_cups_queue_can_still_be_deleted(self, session, monkeypatch):
+        """A failed creation leaves a row with no CUPS queue behind it. If deletion
+        insists CUPS remove something that was never there, the row is stuck forever."""
+        printer_store.create(session, payload(name="orphan"), actor="admin")
+        session.flush()
+
+        def missing(_name):
+            raise cups_control.CupsControlError(
+                "lpadmin -x orphan failed: lpadmin: The printer or class does not exist."
+            )
+
+        monkeypatch.setattr(cups_control, "delete_queue", missing)
+        printer_store.delete(session, "orphan", actor="admin", note="cleaning up")
+        assert session.get(PrinterQueue, "orphan") is None
+
+    def test_a_real_cups_failure_still_blocks_deletion(self, session, monkeypatch):
+        """Only 'does not exist' is benign. Anything else means CUPS still has the queue,
+        and dropping the row would hide a live un-inspected route."""
+        printer_store.create(session, payload(name="stubborn"), actor="admin")
+        session.flush()
+
+        def refused(_name):
+            raise cups_control.CupsControlError("lpadmin: permission denied")
+
+        monkeypatch.setattr(cups_control, "delete_queue", refused)
+        with pytest.raises(printer_store.PrinterError):
+            printer_store.delete(session, "stubborn", actor="admin")
+        assert session.get(PrinterQueue, "stubborn") is not None

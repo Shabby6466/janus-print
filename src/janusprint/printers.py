@@ -354,8 +354,14 @@ def delete(session: Session, name: str, actor: str, note: str = "") -> None:
     try:
         cups_control.delete_queue(name)
     except cups_control.CupsControlError as exc:
-        log.error("could not delete CUPS queue %s: %s", name, exc)
-        raise PrinterError(f"CUPS refused to remove the queue: {exc}") from exc
+        # "does not exist" is not a failure to delete — it is the desired end state, and
+        # it is exactly what a row left behind by a failed creation looks like. Treating
+        # it as fatal made such rows permanently undeletable.
+        if "does not exist" in str(exc) or "not exist" in str(exc):
+            log.info("no CUPS queue named %s to remove; clearing the record", name)
+        else:
+            log.error("could not delete CUPS queue %s: %s", name, exc)
+            raise PrinterError(f"CUPS refused to remove the queue: {exc}") from exc
 
     _record(session, row, actor, "deleted", note)
     session.delete(row)
