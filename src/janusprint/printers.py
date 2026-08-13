@@ -174,6 +174,8 @@ def adopt_existing(session: Session) -> int:
         # showing it as managed would misrepresent what is inspected.
         if not uri.startswith("janus://"):
             continue
+        if name.endswith("-device"):
+            continue  # internal half of a pair, managed with its parent
         scheme, _, rest = uri[len("janus://") :].partition("/")
         session.add(
             PrinterQueue(

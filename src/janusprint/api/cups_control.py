@@ -131,6 +131,10 @@ def janus_uri(device_uri: str) -> str:
     return f"janus://{scheme}/{rest}"
 
 
+def device_queue_name(name: str) -> str:
+    return f"{name}-device"
+
+
 def create_queue(
     name: str,
     device_uri: str,
@@ -140,38 +144,52 @@ def create_queue(
     location: str = "",
     shared: bool = True,
 ) -> list[str]:
-    """Create (or reconfigure) an inspected queue.
+    """Create an inspected queue as a *pair*, and return any non-fatal warnings.
 
-    Two steps, and the order matters: CUPS cannot query a printer's capabilities through
-    the janus:// scheme, so the queue is first created against the real device to generate
-    drivers, then repointed at the interception backend. Doing it the other way round
-    yields a raw queue that sends PDF a printer cannot render, which manifests much later
-    as jobs hanging and unrelated jobs failing with server-error-busy.
+    CUPS runs its filters before the backend. A single queue built with `-m everywhere`
+    against a modern printer therefore converts the job into that printer's raster format
+    *before* janus ever sees it — and raster has no text, so every job arrives unreadable
+    and the inspector is blind while appearing healthy. This is the single most important
+    detail in the whole integration.
+
+    So two queues:
+
+        <name>          client-facing, raw. No filtering, so the client's own PostScript
+                        or PDF reaches the backend intact and can be read.
+        <name>-device   internal, driverless. Does the conversion and talks to the
+                        hardware. Never shared, so nobody can print to it directly and
+                        skip inspection.
+
+    The client-facing queue points at the internal one through janus://, so the release
+    path is: inspected job -> internal queue -> filters -> printer.
     """
     validate_name(name)
     validate_device_uri(device_uri)
+    device_queue = device_queue_name(name)
+    warnings: list[str] = []
 
-    # 1. real device, so CUPS can negotiate drivers
-    _run(["lpadmin", "-p", name, "-E", "-v", device_uri, "-m", model])
+    # 1. Internal queue that owns the hardware and does the format conversion.
+    _run(["lpadmin", "-p", device_queue, "-E", "-v", device_uri, "-m", model])
+    _run(["lpadmin", "-p", device_queue, "-D", f"internal device queue for {name}"])
+    try:
+        set_shared(device_queue, False)
+    except CupsControlError as exc:
+        # Worth surfacing: a shared device queue is a documented bypass route.
+        warnings.append(f"could not un-share the internal device queue: {exc}")
+    _run(["cupsenable", device_queue])
+    _run(["cupsaccept", device_queue])
 
-    # 2. repoint at the interception backend, keeping the generated drivers
-    _run(["lpadmin", "-p", name, "-v", janus_uri(device_uri)])
+    # 2. Client-facing queue. Raw on purpose — the whole point is that CUPS does NOT
+    #    transform the job before inspection.
+    internal_uri = f"janus://ipp/localhost/printers/{device_queue}"
+    _run(["lpadmin", "-p", name, "-E", "-v", internal_uri, "-m", "raw"])
 
     if description:
         _run(["lpadmin", "-p", name, "-D", description])
     if location:
         _run(["lpadmin", "-p", name, "-L", location])
 
-    warnings: list[str] = []
-
-    # Only inspected queues are ever advertised. A shared queue pointing straight at a
-    # device would hand clients a documented route around the inspector.
-    #
-    # CUPS refuses printer-is-shared over IPP ("Cannot change printer-is-shared for remote
-    # queues"), so this step cannot succeed when the API is on a different host from the
-    # spooler. The queue still prints and still inspects — it just will not be advertised
-    # over DNS-SD until sharing is applied locally. That is a discovery gap, not a
-    # correctness one, so it is reported rather than treated as a failure.
+    # Only the inspected queue is ever advertised.
     try:
         set_shared(name, shared)
     except CupsControlError as exc:
@@ -190,8 +208,17 @@ def create_queue(
 
 
 def delete_queue(name: str) -> None:
+    """Remove the inspected queue and its internal device queue together.
+
+    Leaving the device queue behind would strand a working, un-inspected route to the
+    printer — exactly the thing this system exists to prevent.
+    """
     validate_name(name)
     _run(["lpadmin", "-x", name])
+    try:
+        _run(["lpadmin", "-x", device_queue_name(name)])
+    except CupsControlError as exc:
+        log.warning("no internal device queue to remove for %s: %s", name, exc)
 
 
 def set_shared(name: str, shared: bool) -> None:

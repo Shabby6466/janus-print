@@ -182,7 +182,7 @@ def _run_inspection(
     job.page_count = result.page_count
 
     if result.unreadable:
-        return _unreadable(session, job, result, policy, started)
+        return _unreadable(session, job, result, policy, started, data)
 
     thin_pages = result.pages_without_text(settings.text_layer_min_chars)
     job.pages_without_text = len(thin_pages)
@@ -331,12 +331,32 @@ def _match_fingerprints(session: Session, text: str) -> list[fp.FingerprintMatch
 
 
 def _unreadable(
-    session: Session, job: Job, result: ExtractionResult, policy: PrinterPolicy, started: float
+    session: Session,
+    job: Job,
+    result: ExtractionResult,
+    policy: PrinterPolicy,
+    started: float,
+    data: bytes = b"",
 ) -> Verdict:
-    """Encrypted or undecodable — the printer can render it but we cannot read it."""
+    """Encrypted or undecodable — the printer can render it but we cannot read it.
+
+    The leading bytes are recorded because "unreadable" on its own is an unactionable
+    verdict. Knowing that a queue is receiving PWG-Raster rather than PDF is the difference
+    between a five-minute driver change and a week of guessing.
+    """
     kind = "encrypted" if result.encrypted else f"unreadable ({result.format})"
     action = policy.on_unreadable
-    _event(session, job, "unreadable", detail=f"{kind}: {result.error}")
+
+    magic = ""
+    if data:
+        head = data[:16]
+        printable = "".join(chr(b) if 32 <= b < 127 else "." for b in head)
+        magic = f" first bytes: {head.hex(' ')} |{printable}|"
+
+    log.warning(
+        "job %s on %s could not be read (%s).%s", job.id, job.queue, result.format, magic
+    )
+    _event(session, job, "unreadable", detail=f"{kind}: {result.error}{magic}")
     return Verdict(
         job_id=job.id,
         action=action,
