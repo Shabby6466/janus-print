@@ -32,9 +32,12 @@ EOF
 mkdir -p /run/cups /var/spool/cups-pdf/ANONYMOUS
 chown -R lp:lp /var/spool/cups-pdf || true
 
-# Access control is templated rather than baked in, so the same image serves the isolated
-# lab and a real LAN.
-sed -i "s|@@ALLOW_FROM@@|${CUPS_ALLOW_FROM}|g" /etc/cups/cupsd.conf
+# /etc/cups is a persistence volume so operator-created queues survive a rebuild. The
+# config is therefore re-rendered from the image's template on every start, otherwise the
+# volume's stale copy would silently win over any shipped change.
+mkdir -p /etc/cups
+sed "s|@@ALLOW_FROM@@|${CUPS_ALLOW_FROM}|g" \
+  /usr/share/janus-print/cupsd.conf.template > /etc/cups/cupsd.conf
 
 if [ "${ENABLE_DNSSD}" = "true" ]; then
   sed -i 's|^Browsing Off|Browsing On|' /etc/cups/cupsd.conf
@@ -50,6 +53,15 @@ fi
 
 /usr/sbin/cupsd -f &
 CUPSD_PID=$!
+
+# Docker signals PID 1 (this script), not cupsd. Without forwarding, cupsd is eventually
+# SIGKILLed and shuts down without saving state.
+shutdown() {
+  kill -TERM "${CUPSD_PID}" 2>/dev/null || true
+  wait "${CUPSD_PID}" 2>/dev/null || true
+  exit 0
+}
+trap shutdown TERM INT
 
 for _ in $(seq 1 40); do
   lpstat -r 2>/dev/null | grep -q "is running" && break
@@ -80,16 +92,29 @@ cupsenable office-laser finance-laser sink-raw || true
 cupsaccept office-laser finance-laser sink-raw || true
 lpadmin -d office-laser
 
-# A queue is only advertised over DNS-SD if it is explicitly shared. Recent CUPS defaults
-# this to false, so discovery silently does nothing without it.
+# A queue is only advertised over DNS-SD if it is explicitly shared, and recent CUPS
+# defaults that to false — discovery silently does nothing without this.
+#
+# Share by device URI rather than by name: a janus:// queue is inspected and safe to
+# advertise, anything else talks to a device directly and must stay hidden, or clients
+# would discover a route around the inspector. This is correct by construction, so
+# operator-created queues (office-printer and friends) are handled without editing a list.
 if [ "${ENABLE_DNSSD}" = "true" ]; then
-  for queue in office-laser finance-laser; do
-    lpadmin -p "${queue}" -o printer-is-shared=true
-  done
-  # The sink stands in for the physical device — never advertise it, or clients can print
-  # straight to it and bypass inspection entirely.
-  lpadmin -p sink-raw -o printer-is-shared=false
-  echo "== shared queues: office-laser finance-laser =="
+  shared=""
+  hidden=""
+  while read -r _ _ queue uri; do
+    queue="${queue%:}"
+    case "${uri}" in
+      janus://*)
+        lpadmin -p "${queue}" -o printer-is-shared=true && shared="${shared} ${queue}"
+        ;;
+      *)
+        lpadmin -p "${queue}" -o printer-is-shared=false && hidden="${hidden} ${queue}"
+        ;;
+    esac
+  done < <(lpstat -v 2>/dev/null)
+  echo "== advertised (inspected):${shared:- none} =="
+  echo "== hidden (direct to device):${hidden:- none} =="
 fi
 
 echo "== lab queues ready =="

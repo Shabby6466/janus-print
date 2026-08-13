@@ -8,7 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         avahi-daemon avahi-utils dbus libnss-mdns \
     && rm -rf /var/lib/apt/lists/*
 
-COPY docker/cups/cupsd.conf /etc/cups/cupsd.conf
+# Pristine template. /etc/cups is a persistence volume at runtime (queue definitions
+# must survive a rebuild), so the config is re-applied from here on every start
+# rather than being shadowed by the volume's copy.
+COPY docker/cups/cupsd.conf /usr/share/janus-print/cupsd.conf.template
 COPY docker/cups/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY backend/janus /usr/lib/cups/backend/janus
 

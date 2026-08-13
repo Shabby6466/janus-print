@@ -102,6 +102,10 @@ services:
       CUPS_ALLOW_FROM: all
     ports:
       - "6631:631"
+    volumes:
+      # Operator-created queues live in /etc/cups/printers.conf. Without this, rebuilding
+      # the container silently destroys every printer you added by hand.
+      - cupsconfig:/etc/cups
     depends_on:
       - api
 
@@ -133,3 +137,4 @@ services:
 volumes:
   pgdata:
   miniodata:
+  cupsconfig:
