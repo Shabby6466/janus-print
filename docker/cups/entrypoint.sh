@@ -127,6 +127,9 @@ if [ "${ENABLE_DNSSD}" = "true" ]; then
 fi
 
 echo "== queues ready =="
-lpstat -v
+# `lpstat -v` exits non-zero when no queues exist, which under `set -e` would kill this
+# script before it reaches `wait` — the container would exit the moment it had no
+# printers, exactly when an operator is mid-way through recreating one.
+lpstat -v || echo "(no queues yet — add one with lpadmin)"
 
 wait "${CUPSD_PID}"
