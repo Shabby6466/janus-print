@@ -55,43 +55,79 @@ lpadmin -p acct-laser -E -v janus://ipp/10.0.4.21/ipp/print -m everywhere
 Use driverless (`-m everywhere`) queues. They deliver PDF with an intact text layer;
 legacy PCL queues rasterize first, forcing OCR on every job.
 
-## Print from a workstation
+## Rolling out to workstations
 
-The lab's `client` container is a stand-in. Real workstations point at the same CUPS queue
-and take the identical path — backend, inspector, verdict, hold or release.
+No single mechanism covers every platform. macOS and Linux discover the queue over
+Bonjour/DNS-SD; **Windows does not** — it uses WSD, which CUPS does not speak, so Windows
+clients need a push.
 
-On the laptop (macOS or Linux), pointing at the print server on `:6631`:
+### macOS and Linux — automatic discovery
 
 ```bash
-lpadmin -p janus-office -E \
-    -v ipp://172.18.100.3:6631/printers/office-printer \
-    -m everywhere
-cupsenable janus-office && cupsaccept janus-office
+docker compose -f docker-compose.yml -f docker-compose.discovery.yml up -d --build
 ```
+
+The inspected queues then appear by themselves in every Mac and Linux print dialog on the
+subnet. Nothing to configure per machine.
+
+Requirements and consequences, all of them load-bearing:
+
+- **Host networking is required.** mDNS is link-local multicast and does not cross Docker's
+  bridge. The override sets `network_mode: host` and repoints the cups container at the
+  host's published ports, since it can no longer resolve `api` or `siem` by service name.
+- **Port 631 on the host must be free.** If the server runs its own cupsd,
+  `systemctl disable --now cups cups-browsed` first or the container will not bind.
+- **Linux servers only.** Docker Desktop on Mac/Windows does not give a host-networked
+  container the LAN interface, so discovery will not work there.
+- **The sink queue is deliberately not advertised.** Only queues fronted by the janus
+  backend are shared; advertising the device queue would let clients print straight to the
+  printer and skip inspection.
+
+### Windows — push the queue
+
+```powershell
+.\docs\deploy-windows-printer.ps1 -Server 172.18.100.3 -Port 631 -Queue office-printer
+```
+
+Run as Administrator per machine, or deploy via Group Policy (Computer Configuration →
+Preferences → Control Panel Settings → Printers) or Intune. The script enables the Internet
+Printing Client feature, verifies the queue is reachable, and installs it against the
+Microsoft IPP Class Driver.
+
+Pass `-RemoveDirectPorts -PrinterAddress <printer-ip>` to also strip any existing direct
+TCP/IP port to the device — those bypass inspection completely.
+
+### Manual, one machine
 
 ```bash
 lpadmin -p janus-office -E \
   -v ipp://172.18.100.3:6631/printers/office-printer \
   -m everywhere
 cupsenable janus-office && cupsaccept janus-office
-lp -d janus-office some.pdf
 ```
 
 macOS GUI equivalent: **Settings → Printers & Scanners → Add → IP**, address
 `172.18.100.3:6631`, queue `printers/office-printer`, protocol **IPP**.
 
-Prefer `-m everywhere` on the client too. Driverless clients send PDF, which keeps the text
+Prefer `-m everywhere` on the client. Driverless clients send PDF, which keeps the text
 layer intact; a client with a PostScript PPD converts first and forces a ghostscript pass on
 the server for every job.
+
+### Attribution and access control
 
 **Workstation attribution** comes from `job-originating-host-name`, which CUPS passes in the
 backend's options argument — it does *not* set `REMOTE_HOST`. Reading the wrong one
 attributes every laptop's job to the print server itself and makes the audit trail useless
 on a shared queue. It lands in the CEF event as `shost=`.
 
-Note that `docker/cups/cupsd.conf` currently allows submission and administration from
-anywhere. That is fine on an isolated compose network and wrong on a real LAN — restrict
-the `<Location />` and `<Location /admin>` blocks to your client subnet before rollout.
+**Who may submit and administer** is set by `CUPS_ALLOW_FROM`, templated into `cupsd.conf`
+at startup. It defaults to `@LOCAL` (the server's own subnet); the base compose file
+overrides it to `all` because the lab network is isolated. Never run `all` on a real LAN —
+it lets anyone reconfigure the print server.
+
+**None of this stops direct printing.** A workstation with a TCP/IP port straight to the
+device on 9100 never touches the spooler. Block 9100 to printers at the switch; that is the
+only durable control.
 
 ## What is built
 

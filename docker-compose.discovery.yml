@@ -1,0 +1,36 @@
+# Office deployment: advertise the inspected queues over Bonjour/DNS-SD so macOS and Linux
+# clients discover them with no per-machine setup.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.discovery.yml up -d --build
+#
+# Windows does NOT discover Bonjour printers natively — it uses WSD, which CUPS does not
+# speak. Push the queue to Windows clients with docs/deploy-windows-printer.ps1 instead.
+#
+# Host networking is required: mDNS is link-local multicast and does not cross Docker's
+# bridge. Two consequences:
+#
+#   * the cups container can no longer resolve "api" or "siem" by service name, so it is
+#     pointed at the host's published ports instead;
+#   * port 631 on the host must be free. If the host runs its own cupsd, stop it first
+#     (systemctl disable --now cups cups-browsed) or the container will fail to bind.
+#
+# Host networking is Linux-only. On Docker Desktop for Mac/Windows it does not give the
+# container the LAN interface, so discovery will not work there.
+
+services:
+  cups:
+    network_mode: host
+    environment:
+      ENABLE_DNSSD: "true"
+      # Restrict submission and administration to the office subnet. @LOCAL means any
+      # address on the server's own subnet; replace with an explicit CIDR to be tighter.
+      CUPS_ALLOW_FROM: "@LOCAL"
+      JANUS_PRINT_API_URL: http://127.0.0.1:8088
+      JANUS_PRINT_SYSLOG_HOST: 127.0.0.1
+      JANUS_PRINT_SYSLOG_PORT: "514"
+    ports: !reset []
+
+  # Reachable from the host-networked cups container.
+  siem:
+    ports:
+      - "127.0.0.1:514:514/udp"

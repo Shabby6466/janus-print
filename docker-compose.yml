@@ -97,6 +97,9 @@ services:
     environment:
       JANUS_PRINT_API_URL: http://api:8080
       JANUS_PRINT_SYSLOG_HOST: siem
+      # Lab only — the isolated compose network has no untrusted clients on it. The
+      # discovery override tightens this to @LOCAL for real deployments.
+      CUPS_ALLOW_FROM: all
     ports:
       - "6631:631"
     depends_on:

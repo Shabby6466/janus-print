@@ -38,6 +38,7 @@ dev = [
 janus-print-api = "janusprint.api.app:main"
 janus-print-worker = "janusprint.worker:main"
 janus-print-rules = "janusprint.inspector.rules:main"
+janus-print-admin = "janusprint.admin_cli:main"
 
 [build-system]
 requires = ["setuptools>=75"]

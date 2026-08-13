@@ -233,3 +233,51 @@ class TestConsole:
     def test_all_console_pages_render(self, authed_client):
         for path in ["/", "/queue", "/rules", "/documents", "/policies", "/audit"]:
             assert authed_client.get(path).status_code == 200, path
+
+
+class TestAdminCLI:
+    """With dev_mode off nothing seeds an account, so the CLI is the only way in."""
+
+    def test_create_and_authenticate(self, monkeypatch):
+        from janusprint.admin_cli import cmd_create, cmd_list
+        from janusprint.api.auth import authenticate
+
+        monkeypatch.setenv("JANUS_PRINT_NEW_PASSWORD", "a-real-long-password")
+        assert cmd_create("soc1", "approver") == 0
+        assert cmd_list() == 0
+
+        with session_scope() as session:
+            user = authenticate(session, "soc1", "a-real-long-password")
+            assert user is not None and user.role == "approver"
+            assert authenticate(session, "soc1", "wrong") is None
+
+    def test_duplicate_create_is_refused(self, monkeypatch):
+        from janusprint.admin_cli import cmd_create
+
+        monkeypatch.setenv("JANUS_PRINT_NEW_PASSWORD", "a-real-long-password")
+        cmd_create("soc1", "analyst")
+        with __import__("pytest").raises(SystemExit):
+            cmd_create("soc1", "analyst")
+
+    def test_passwd_resets_and_reactivates(self, monkeypatch):
+        from janusprint.admin_cli import cmd_create, cmd_disable, cmd_passwd
+        from janusprint.api.auth import authenticate
+
+        monkeypatch.setenv("JANUS_PRINT_NEW_PASSWORD", "first-long-password")
+        cmd_create("soc2", "analyst")
+        cmd_disable("soc2")
+
+        with session_scope() as session:
+            assert authenticate(session, "soc2", "first-long-password") is None
+
+        monkeypatch.setenv("JANUS_PRINT_NEW_PASSWORD", "second-long-password")
+        cmd_passwd("soc2")
+        with session_scope() as session:
+            assert authenticate(session, "soc2", "second-long-password") is not None
+
+    def test_unknown_user_is_an_error(self, monkeypatch):
+        from janusprint.admin_cli import cmd_passwd
+
+        monkeypatch.setenv("JANUS_PRINT_NEW_PASSWORD", "a-real-long-password")
+        with __import__("pytest").raises(SystemExit):
+            cmd_passwd("nobody")

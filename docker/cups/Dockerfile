@@ -5,6 +5,7 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
         cups cups-client cups-filters cups-pdf python3 python3-minimal \
         ghostscript ca-certificates curl \
+        avahi-daemon avahi-utils dbus libnss-mdns \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docker/cups/cupsd.conf /etc/cups/cupsd.conf
