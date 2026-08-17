@@ -281,3 +281,37 @@ class TestAdminCLI:
         monkeypatch.setenv("JANUS_PRINT_NEW_PASSWORD", "a-real-long-password")
         with __import__("pytest").raises(SystemExit):
             cmd_passwd("nobody")
+
+
+class TestSchemaBootstrap:
+    def test_concurrent_init_db_does_not_raise(self):
+        """API and worker both run init_db on boot. Racing them must not kill either.
+
+        On SQLite this exercises the plain path; the Postgres path takes an advisory lock,
+        which is what stops the duplicate-key crash seen on a real deployment.
+        """
+        import threading
+
+        from janusprint.db import init_db
+
+        errors: list[Exception] = []
+
+        def boot():
+            try:
+                init_db()
+            except Exception as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        threads = [threading.Thread(target=boot) for _ in range(4)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert not errors, errors
+
+    def test_init_db_is_idempotent(self):
+        from janusprint.db import init_db
+
+        init_db()
+        init_db()

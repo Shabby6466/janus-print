@@ -55,9 +55,14 @@ services:
       JANUS_PRINT_SIEM_PROTOCOL: udp
       # Lab only. Both of these must be real secrets in production, and dev_mode must be
       # off — it seeds a default admin account.
-      JANUS_PRINT_DEV_MODE: "true"
-      JANUS_PRINT_ARCHIVE_MASTER_KEY: lab-master-key-not-for-production
-      JANUS_PRINT_REQUIRE_DUAL_APPROVAL_FOR_CONTENT: "true"
+      # Defaults keep the lab working out of the box; a .env file overrides them for a
+      # real install. Without the ${...} indirection, .env would be read by compose for
+      # interpolation and then ignored here — a hardened-looking install still running
+      # the lab key.
+      JANUS_PRINT_DEV_MODE: "${JANUS_PRINT_DEV_MODE:-true}"
+      JANUS_PRINT_ARCHIVE_MASTER_KEY: "${JANUS_PRINT_ARCHIVE_MASTER_KEY:-lab-master-key-not-for-production}"
+      JANUS_PRINT_SESSION_SECRET: "${JANUS_PRINT_SESSION_SECRET:-INSECURE-DEV-SESSION-SECRET}"
+      JANUS_PRINT_REQUIRE_DUAL_APPROVAL_FOR_CONTENT: "${JANUS_PRINT_REQUIRE_DUAL_APPROVAL_FOR_CONTENT:-true}"
       # lp/cancel honour CUPS_SERVER, so "local" mode drives the remote spooler over IPP
       # without needing ssh. On a real install the API usually runs on the print server
       # itself and CUPS_SERVER is unset.
@@ -91,8 +96,8 @@ services:
       JANUS_PRINT_ARCHIVE_BACKEND: s3
       JANUS_PRINT_S3_ENDPOINT: http://minio:9000
       JANUS_PRINT_SIEM_HOST: siem
-      JANUS_PRINT_DEV_MODE: "true"
-      JANUS_PRINT_ARCHIVE_MASTER_KEY: lab-master-key-not-for-production
+      JANUS_PRINT_DEV_MODE: "${JANUS_PRINT_DEV_MODE:-true}"
+      JANUS_PRINT_ARCHIVE_MASTER_KEY: "${JANUS_PRINT_ARCHIVE_MASTER_KEY:-lab-master-key-not-for-production}"
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}

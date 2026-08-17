@@ -64,8 +64,30 @@ def get_session() -> Iterator[Session]:
         yield session
 
 
+# Arbitrary but fixed: any process creating this schema takes the same lock.
+_SCHEMA_LOCK_ID = 0x6A616E75  # "janu"
+
+
 def init_db() -> None:
-    Base.metadata.create_all(get_engine())
+    """Create any missing tables, safely when several processes start at once.
+
+    The API and the worker both do this on boot. `create_all` checks before creating, but
+    that check and the CREATE are not atomic, so two processes starting together race and
+    one dies with a duplicate-key error on pg_type — leaving a stack that looks up except
+    for the one container that matters. A Postgres advisory lock serialises them; it is
+    held for the transaction and released automatically.
+    """
+    engine = get_engine()
+
+    if engine.dialect.name != "postgresql":
+        Base.metadata.create_all(engine)
+        return
+
+    from sqlalchemy import text
+
+    with engine.begin() as connection:
+        connection.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _SCHEMA_LOCK_ID})
+        Base.metadata.create_all(connection)
 
 
 def reset_engine() -> None:
