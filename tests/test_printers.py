@@ -126,7 +126,7 @@ class TestPolicyTakesEffect:
         )
         # deep_scan_required holds image-only pages instead of releasing them.
         assert verdict.state == JobState.held
-        assert "no text layer" in verdict.reason
+        assert "could not be read as text" in verdict.reason
 
     def test_rule_tags_scope_detection_per_printer(self, session, pdf_factory):
         printer_store.create(

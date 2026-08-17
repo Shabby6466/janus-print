@@ -446,11 +446,31 @@ def deep_scan(session: Session, job_id: str) -> Verdict | None:
         job.scan_tier = ScanTier.ocr_complete
         return None
 
-    pdf_bytes = data if result.format == "pdf" else b""
-    if not pdf_bytes:
-        log.info("job %s is %s; OCR needs the converted PDF", job_id, result.format)
-        job.scan_tier = ScanTier.ocr_complete
-        return None
+    # OCR rasterises pages, which only works on PDF. PostScript and PCL therefore have to
+    # be converted first — the same conversion the inline pass did, repeated here because
+    # the converted copy is not retained. Skipping this silently marked the scan complete
+    # without ever running OCR, leaving the job held with no verdict and no explanation.
+    pdf_bytes = data
+    if result.format != "pdf":
+        from .extract import _to_pdf
+
+        converted = _to_pdf(data, result.format)
+        if converted is None:
+            log.error(
+                "job %s is %s and could not be converted for OCR; leaving it held",
+                job_id,
+                result.format,
+            )
+            _event(
+                session,
+                job,
+                "deep_scan_failed",
+                detail=f"cannot rasterise a {result.format} document for OCR",
+            )
+            job.scan_tier = ScanTier.unreadable
+            session.flush()
+            return None
+        pdf_bytes = converted
 
     texts = ocr_pages(pdf_bytes, thin)
     policy = policy_for(session, job.queue)

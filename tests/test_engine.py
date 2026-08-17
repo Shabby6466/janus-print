@@ -111,7 +111,7 @@ class TestImageOnlyPages:
         verdict = inspect_job(session, meta(queue="finance-laser"), self._image_only_pdf())
         assert verdict.action == "hold"
         assert verdict.state == JobState.held
-        assert "no text layer" in verdict.reason
+        assert "could not be read as text" in verdict.reason
         assert verdict.deep_scan_queued is True
 
 
@@ -293,3 +293,87 @@ class TestDeepScanRelease:
         engine.deep_scan(session, verdict.job_id)
         session.flush()
         assert session.get(Job, verdict.job_id).state == JobState.held
+
+
+class TestDeepScanFormats:
+    """OCR rasterises pages, so anything that is not already PDF must be converted first.
+
+    Skipping that silently marked the scan complete without running OCR at all — the job
+    stayed held with no verdict, which looks identical to a slow worker.
+    """
+
+    def _postscript_with_text(self, pdf_factory) -> bytes:
+        import shutil
+        import subprocess
+        import tempfile
+        from pathlib import Path
+
+        if shutil.which("gs") is None:
+            import pytest
+
+            pytest.skip("ghostscript not installed")
+
+        pdf = pdf_factory(["STRICTLY CONFIDENTIAL", "Draft merger agreement"])
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = Path(tmp) / "in.pdf", Path(tmp) / "out.ps"
+            source.write_bytes(pdf)
+            subprocess.run(
+                ["gs", "-q", "-dNOPAUSE", "-dBATCH", "-sDEVICE=ps2write",
+                 f"-sOutputFile={target}", str(source)],
+                check=True, capture_output=True,
+            )
+            return target.read_bytes()
+
+    def test_postscript_job_is_converted_for_ocr(self, session, pdf_factory, monkeypatch):
+        """Whatever made the page unreadable, OCR must receive a PDF.
+
+        The trigger is forced here rather than synthesised: ghostscript round-trips clean
+        PostScript back into readable text, so a fixture cannot naturally produce the
+        mis-encoded font that caused this in the field.
+        """
+        from janusprint.inspector import engine, extract
+        from janusprint.models import Job
+
+        data = self._postscript_with_text(pdf_factory)
+
+        # Every page reads as unusable, exactly like a subset font with no Unicode map.
+        monkeypatch.setattr(extract, "looks_like_language", lambda _text: False)
+
+        verdict = inspect_job(session, meta(queue="finance-laser", cups_job_id="1"), data)
+        assert verdict.state == JobState.held
+        session.commit()
+
+        rendered: dict = {}
+
+        def fake_ocr(pdf_bytes, pages):
+            # The point of the fix: deep_scan hands OCR a PDF, not raw PostScript.
+            rendered["magic"] = pdf_bytes[:4]
+            return {p: "STRICTLY CONFIDENTIAL board pack" for p in pages}
+
+        monkeypatch.setattr("janusprint.inspector.ocr.ocr_pages", fake_ocr)
+        engine.deep_scan(session, verdict.job_id)
+        session.flush()
+
+        assert rendered.get("magic") == b"%PDF", "OCR was handed PostScript, or never ran"
+        job = session.get(Job, verdict.job_id)
+        assert any(m.tier == "ocr" for m in job.matches)
+        assert job.state == JobState.held  # OCR confirmed the hold
+
+    def test_unconvertible_job_stays_held_and_says_why(self, session, monkeypatch):
+        from janusprint.inspector import engine
+        from janusprint.models import Job, JobEvent
+
+        verdict = inspect_job(
+            session, meta(queue="finance-laser", cups_job_id="2"), b"%!PS-Adobe-3.0\nbroken"
+        )
+        session.commit()
+
+        monkeypatch.setattr(engine, "_to_pdf", lambda *_a: None, raising=False)
+        monkeypatch.setattr("janusprint.inspector.extract._to_pdf", lambda *_a: None)
+        engine.deep_scan(session, verdict.job_id)
+        session.flush()
+
+        job = session.get(Job, verdict.job_id)
+        kinds = {e.kind for e in session.query(JobEvent).filter_by(job_id=job.id)}
+        assert job.state == JobState.held
+        assert "deep_scan_failed" in kinds or job.scan_tier.value == "unreadable"
