@@ -49,20 +49,22 @@ def _ssh_target() -> str:
     return os.environ.get("JANUS_PRINT_CUPS_SSH", "")
 
 
-def _timeout() -> float:
-    """Seconds to allow a CUPS command.
+# Status reads happen while a page is rendering, so they must fail fast. Queue creation
+# makes CUPS negotiate capabilities with the printer over IPP, which on a big MFP takes
+# tens of seconds. One shared timeout cannot serve both: long enough to create a queue
+# means a hung lpstat blocks the console for just as long.
+QUICK_TIMEOUT = 6.0
 
-    Creating a queue makes CUPS negotiate capabilities with the printer over IPP, which on
-    a slow or busy device takes far longer than any other operation here. 30s was too
-    short for real hardware.
-    """
+
+def _timeout() -> float:
+    """Seconds to allow a slow, operator-initiated CUPS command (queue creation)."""
     try:
         return float(os.environ.get("JANUS_PRINT_CUPS_TIMEOUT", "90"))
     except ValueError:
         return 90.0
 
 
-def _run(args: list[str], *, check_output: bool = False) -> str:
+def _run(args: list[str], *, check_output: bool = False, timeout: float | None = None) -> str:
     mode = _mode()
     if mode == "none":
         log.info("cups control disabled; would run: %s", " ".join(args))
@@ -78,7 +80,7 @@ def _run(args: list[str], *, check_output: bool = False) -> str:
 
     try:
         completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
-            args, check=True, capture_output=True, timeout=_timeout()
+            args, check=True, capture_output=True, timeout=timeout or _timeout()
         )
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr.decode(errors="replace").strip()
@@ -94,7 +96,7 @@ def _run(args: list[str], *, check_output: bool = False) -> str:
         raise CupsControlError(f"{' '.join(args)} failed: {stderr}") from exc
     except subprocess.TimeoutExpired as exc:
         raise CupsControlError(
-            f"{' '.join(args)} timed out after {_timeout():.0f}s. If the printer is slow "
+            f"{' '.join(args)} timed out after {timeout or _timeout():.0f}s. If the printer is slow "
             f"to answer, raise JANUS_PRINT_CUPS_TIMEOUT; if it is unreachable or busy, "
             f"CUPS will never get its capabilities."
         ) from exc
@@ -255,7 +257,7 @@ def list_queues() -> dict[str, str]:
     Used to reconcile: a queue configured here but missing in CUPS looks configured while
     inspecting nothing.
     """
-    output = _run(["lpstat", "-v"], check_output=True)
+    output = _run(["lpstat", "-v"], check_output=True, timeout=QUICK_TIMEOUT)
     queues: dict[str, str] = {}
     for line in output.splitlines():
         # "device for office-printer: janus://ipp/10.0.0.5/ipp/print"
@@ -274,7 +276,7 @@ def printer_state(name: str) -> dict[str, str]:
     distinguished from a genuinely missing queue by cross-checking the device list.
     """
     validate_name(name)
-    output = _run(["lpstat", "-p", name], check_output=True).strip()
+    output = _run(["lpstat", "-p", name], check_output=True, timeout=QUICK_TIMEOUT).strip()
 
     if output:
         first = output.splitlines()[0]

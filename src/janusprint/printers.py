@@ -97,6 +97,7 @@ def _load(session: Session) -> dict[str, PrinterPolicy]:
 def invalidate_cache() -> None:
     global _cached
     _cached = None
+    invalidate_reconcile_cache()
 
 
 def policy_for(session: Session, queue: str) -> PrinterPolicy:
@@ -369,26 +370,52 @@ def delete(session: Session, name: str, actor: str, note: str = "") -> None:
     invalidate_cache()
 
 
-def reconcile(session: Session) -> dict[str, list[str]]:
+# Reconciliation shells out to lpstat, so it is cached briefly: the console renders it on
+# every page load, and a spooler that answers slowly should not make the page feel broken.
+_RECONCILE_TTL = 30.0
+_reconcile_cache: tuple[float, dict[str, list[str]]] | None = None
+
+
+def reconcile(session: Session, use_cache: bool = True) -> dict[str, list[str]]:
     """Compare what is configured here with what CUPS actually has."""
+    import time
+
     from .api import cups_control
 
+    global _reconcile_cache
+    if use_cache and _reconcile_cache is not None:
+        cached_at, cached = _reconcile_cache
+        if time.monotonic() - cached_at < _RECONCILE_TTL:
+            # Refresh the managed list from the database; only the CUPS side is cached.
+            live_names = set(session.scalars(select(PrinterQueue.name)))
+            return cached | {"managed": sorted(live_names)}
+
     rows = {row.name: row for row in session.scalars(select(PrinterQueue))}
+    empty = {"managed": sorted(rows), "missing_in_cups": [], "unmanaged_in_cups": []}
     if not cups_control.available():
-        return {"managed": sorted(rows), "missing_in_cups": [], "unmanaged_in_cups": []}
+        return empty
 
     try:
         live = cups_control.list_queues()
-    except cups_control.CupsControlError:
-        return {"managed": sorted(rows), "missing_in_cups": [], "unmanaged_in_cups": []}
+    except cups_control.CupsControlError as exc:
+        log.warning("could not reconcile against CUPS: %s", exc)
+        _reconcile_cache = (time.monotonic(), empty)
+        return empty
 
-    return {
+    result = {
         "managed": sorted(rows),
         # Configured here, absent there: looks protected, inspects nothing.
         "missing_in_cups": sorted(set(rows) - set(live)),
         # Present there, unknown here: running on the default policy.
         "unmanaged_in_cups": sorted(set(live) - set(rows)),
     }
+    _reconcile_cache = (time.monotonic(), result)
+    return result
+
+
+def invalidate_reconcile_cache() -> None:
+    global _reconcile_cache
+    _reconcile_cache = None
 
 
 def revisions(session: Session, queue: str | None = None, limit: int = 200) -> list[PrinterRevision]:
