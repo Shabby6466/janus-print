@@ -49,6 +49,19 @@ def _ssh_target() -> str:
     return os.environ.get("JANUS_PRINT_CUPS_SSH", "")
 
 
+def _timeout() -> float:
+    """Seconds to allow a CUPS command.
+
+    Creating a queue makes CUPS negotiate capabilities with the printer over IPP, which on
+    a slow or busy device takes far longer than any other operation here. 30s was too
+    short for real hardware.
+    """
+    try:
+        return float(os.environ.get("JANUS_PRINT_CUPS_TIMEOUT", "90"))
+    except ValueError:
+        return 90.0
+
+
 def _run(args: list[str], *, check_output: bool = False) -> str:
     mode = _mode()
     if mode == "none":
@@ -65,7 +78,7 @@ def _run(args: list[str], *, check_output: bool = False) -> str:
 
     try:
         completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
-            args, check=True, capture_output=True, timeout=30
+            args, check=True, capture_output=True, timeout=_timeout()
         )
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr.decode(errors="replace").strip()
@@ -80,7 +93,11 @@ def _run(args: list[str], *, check_output: bool = False) -> str:
             ) from exc
         raise CupsControlError(f"{' '.join(args)} failed: {stderr}") from exc
     except subprocess.TimeoutExpired as exc:
-        raise CupsControlError(f"{' '.join(args)} timed out") from exc
+        raise CupsControlError(
+            f"{' '.join(args)} timed out after {_timeout():.0f}s. If the printer is slow "
+            f"to answer, raise JANUS_PRINT_CUPS_TIMEOUT; if it is unreachable or busy, "
+            f"CUPS will never get its capabilities."
+        ) from exc
 
     return completed.stdout.decode(errors="replace") if check_output else ""
 
