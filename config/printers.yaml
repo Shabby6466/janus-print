@@ -22,44 +22,56 @@ default:
   rule_tags: ["*"]
   description: Every queue without an explicit entry.
 
-queues:
-  finance-laser:
-    deep_scan_required: true
-    fail_mode: closed
-    on_unreadable: hold
-    rule_tags: ["*"]
-    description: >
-      Finance floor. Handles card data and payment runs, so it accepts the latency of a
-      deep scan and stops printing entirely if the inspector is unavailable.
-
-  hr-mfp:
-    deep_scan_required: true
-    fail_mode: closed
-    on_unreadable: hold
-    rule_tags: [pii, hr, gdpr, corporate, secrets]
-    description: HR. Personal data by definition; scanned ID documents are routine here.
-
-  legal-secure:
-    deep_scan_required: true
-    fail_mode: closed
-    on_unreadable: hold
-    rule_tags: ["*"]
-    description: Legal. Privileged material and M&A drafts.
-
-  reception-mfp:
-    deep_scan_required: false
-    fail_mode: open
-    on_unreadable: log
-    rule_tags: [secrets, pci]
-    description: >
-      Front desk, mostly visitor passes and delivery notes. Narrow rule set to keep the
-      false positive rate near zero on a queue nobody is watching.
-
-  warehouse-label:
-    deep_scan_required: false
-    fail_mode: open
-    on_unreadable: log
-    rule_tags: [secrets]
-    description: >
-      Label printer. High volume, low sensitivity, and a stalled queue stops shipping —
-      fail open and inspect for credentials only.
+# No queues are defined here by default.
+#
+# Printers are created from the console (Printers -> Add), which creates the CUPS queue and
+# stores its policy together. Entries in this file describe policy ONLY — they create no
+# queue and inspect nothing, so shipping examples as live rows makes a fresh install look
+# like it is protecting printers that do not exist.
+#
+# Use this file when you want policy under version control, or for queues created outside
+# janus-print. Otherwise leave it empty and manage printers in the console.
+#
+# Reference examples, deliberately commented out:
+#
+# queues:
+#   finance-laser:
+#     deep_scan_required: true
+#     fail_mode: closed
+#     on_unreadable: hold
+#     rule_tags: ["*"]
+#     description: >
+#       Finance floor. Handles card data and payment runs, so it accepts the latency of a
+#       deep scan and stops printing entirely if the inspector is unavailable.
+#
+#   hr-mfp:
+#     deep_scan_required: true
+#     fail_mode: closed
+#     on_unreadable: hold
+#     rule_tags: [pii, hr, gdpr, corporate, secrets]
+#     description: HR. Personal data by definition; scanned ID documents are routine here.
+#
+#   legal-secure:
+#     deep_scan_required: true
+#     fail_mode: closed
+#     on_unreadable: hold
+#     rule_tags: ["*"]
+#     description: Legal. Privileged material and M&A drafts.
+#
+#   reception-mfp:
+#     deep_scan_required: false
+#     fail_mode: open
+#     on_unreadable: log
+#     rule_tags: [secrets, pci]
+#     description: >
+#       Front desk, mostly visitor passes and delivery notes. Narrow rule set to keep the
+#       false positive rate near zero on a queue nobody is watching.
+#
+#   warehouse-label:
+#     deep_scan_required: false
+#     fail_mode: open
+#     on_unreadable: log
+#     rule_tags: [secrets]
+#     description: >
+#       Label printer. High volume, low sensitivity, and a stalled queue stops shipping —
+#       fail open and inspect for credentials only.

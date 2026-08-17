@@ -38,9 +38,40 @@ def _isolated_settings(tmp_path, monkeypatch):
     db.init_db()
     # Rules live in the database now; seed the shipped packs so tests exercise the same
     # ruleset the product ships with.
+    from janusprint import printers as printer_store
+    from janusprint.models import PrinterQueue
+
     with db.session_scope() as seeding:
         rule_store.seed_from_yaml(seeding)
+        # Queue policies the tests exercise. Defined here rather than relying on the
+        # shipped config/printers.yaml, which ships no example queues — a test suite that
+        # depends on sample configuration breaks the moment the samples change.
+        seeding.add(
+            PrinterQueue(
+                name="finance-laser",
+                device_uri="",
+                deep_scan_required=True,
+                fail_mode="closed",
+                on_unreadable="hold",
+                rule_tags=["*"],
+                cups_state="external",
+                description="strict queue fixture",
+            )
+        )
+        seeding.add(
+            PrinterQueue(
+                name="office-laser",
+                device_uri="",
+                deep_scan_required=False,
+                fail_mode="open",
+                on_unreadable="log",
+                rule_tags=["*"],
+                cups_state="external",
+                description="permissive queue fixture",
+            )
+        )
     rule_store.invalidate_cache()
+    printer_store.invalidate_cache()
     yield
 
     config.reset_caches()
@@ -48,6 +79,10 @@ def _isolated_settings(tmp_path, monkeypatch):
     store.reset_archive()
     cef.reset_bridge()
     rule_store.invalidate_cache()
+
+    from janusprint import printers as printer_store
+
+    printer_store.invalidate_cache()
 
 
 @pytest.fixture
