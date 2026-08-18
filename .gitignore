@@ -1,0 +1,19 @@
+# Secrets. .env carries the archive master key; committing it would publish the key that
+# every archived document is encrypted under.
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Local state
+*.db
+*.sqlite3
+archive/

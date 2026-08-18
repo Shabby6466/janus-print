@@ -37,7 +37,11 @@ services:
       MINIO_ROOT_USER: janus
       MINIO_ROOT_PASSWORD: janusjanus
     ports:
-      - "9001:9001"
+      # Loopback only. This is the object store holding every archived print job; its
+      # console defaults to janus/janusjanus, so exposing it on the LAN would hand anyone
+      # the whole archive. Reach it with an SSH tunnel when you need it:
+      #   ssh -L 9001:localhost:9001 <server>
+      - "127.0.0.1:9001:9001"
     volumes:
       - miniodata:/data
 
