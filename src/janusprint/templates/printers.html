@@ -50,20 +50,34 @@
     </div>
   </div>
 
+  <div style="margin:14px 0">
+    <label style="margin-bottom:6px">Scanned / image-only pages</label>
+    <div class="row" style="gap:12px;align-items:stretch">
+      <label class="mode-card" style="flex:1;display:block;padding:10px 12px;border:1px solid var(--line);border-radius:6px;cursor:pointer">
+        <input type="radio" name="np_mode" id="np_mode_enforce" value="enforce" style="width:auto" checked>
+        <strong>Enforce</strong>
+        <div class="note" style="margin-top:4px">
+          Nothing prints until OCR finishes, however long that takes. A page the inspector
+          cannot read is held rather than released. Safest; users wait for the scan.
+        </div>
+      </label>
+      <label class="mode-card" style="flex:1;display:block;padding:10px 12px;border:1px solid var(--line);border-radius:6px;cursor:pointer">
+        <input type="radio" name="np_mode" id="np_mode_monitor" value="monitor" style="width:auto">
+        <strong>Monitor</strong>
+        <div class="note" style="margin-top:4px">
+          Everything prints immediately. Unreadable pages are OCR'd in parallel; a match
+          becomes a retrospective incident — you cannot unprint, only be told afterwards.
+        </div>
+      </label>
+    </div>
+  </div>
+
   <div class="row" style="gap:12px">
     <div style="flex:1">
-      <label for="np_fail">Fail mode</label>
+      <label for="np_fail">If the inspector itself is unreachable</label>
       <select id="np_fail">
-        <option value="open">open — keep printing if the inspector is down</option>
+        <option value="open">open — keep printing, log the coverage gap</option>
         <option value="closed">closed — stop the job</option>
-      </select>
-    </div>
-    <div style="flex:1">
-      <label for="np_unreadable">Unreadable documents</label>
-      <select id="np_unreadable">
-        <option value="log">log</option>
-        <option value="hold">hold</option>
-        <option value="block">block</option>
       </select>
     </div>
     <div style="flex:1">
@@ -72,7 +86,6 @@
     </div>
   </div>
 
-  <label><input id="np_deep" type="checkbox" style="width:auto"> Hold image-only pages until OCR clears them</label>
   <label><input id="np_shared" type="checkbox" style="width:auto" checked> Advertise on the network
     (Bonjour/DNS-SD)</label>
   <label for="np_note">Reason (recorded permanently)</label>
@@ -93,7 +106,7 @@
       <tr>
         <th>Queue</th>
         <th>Device</th>
-        <th>Deep scan</th>
+        <th>Scan mode</th>
         <th>Fail mode</th>
         <th>Rule tags</th>
         <th>Shared</th>
@@ -114,10 +127,12 @@
           {% if p.janus_uri %}<div class="note">via {{ p.janus_uri }}</div>{% endif %}
         </td>
         <td>
-          <select onchange="patch('{{ p.name }}', {deep_scan_required: this.value === 'yes'})"
-            style="margin:0;width:auto">
-            <option value="no" {{ 'selected' if not p.deep_scan_required }}>async</option>
-            <option value="yes" {{ 'selected' if p.deep_scan_required }}>required</option>
+          <select onchange="patch('{{ p.name }}', {mode: this.value})" style="margin:0;width:auto">
+            <option value="enforce" {{ 'selected' if p.mode=='enforce' }}>Enforce</option>
+            <option value="monitor" {{ 'selected' if p.mode=='monitor' }}>Monitor</option>
+            {% if p.mode == 'custom' %}
+            <option value="custom" selected>Custom</option>
+            {% endif %}
           </select>
         </td>
         <td>
@@ -176,14 +191,14 @@
   async function addPrinter() {
     const error = document.getElementById('addErr');
     error.textContent = '';
+    const mode = document.querySelector('input[name="np_mode"]:checked').value;
     const result = await call('/api/v1/printers', 'POST', {
       name: document.getElementById('np_name').value.trim(),
       device_uri: document.getElementById('np_uri').value.trim(),
       location: document.getElementById('np_location').value.trim(),
+      mode: mode,
       fail_mode: document.getElementById('np_fail').value,
-      on_unreadable: document.getElementById('np_unreadable').value,
       rule_tags: document.getElementById('np_tags').value.split(',').map(s => s.trim()).filter(Boolean),
-      deep_scan_required: document.getElementById('np_deep').checked,
       shared: document.getElementById('np_shared').checked,
       note: document.getElementById('np_note').value.trim()
     });
@@ -195,8 +210,13 @@
   }
 
   async function patch(name, fields) {
+    if (!fields.note) {
+      const note = prompt('Reason for this change (recorded permanently):');
+      if (note === null) return;
+      fields = Object.assign({}, fields, { note: note });
+    }
     const result = await call(`/api/v1/printers/${name}`, 'PATCH', fields);
-    if (!result.ok) alert(result.detail);
+    if (!result.ok) { alert(result.detail); return; }
     location.reload();
   }
 

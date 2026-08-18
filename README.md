@@ -257,9 +257,7 @@ makes it the *only* path.
 
 ### 4. Unmeasured or untested
 
-- **OCR accuracy on real scans.** The pipeline is proven end to end, but only against
-  synthetic pages. Worth measuring before trusting `deep_scan_required` on a queue where
-  scanned documents are routine.
+- ~~OCR accuracy on real scans~~ — **measured**, see below.
 - **`docs/windows/Deploy-JanusPrinter.ps1`** has never run on Windows. The one-line
   installer served from `/install/windows/<queue>.ps1` is what has been used in practice.
 - **Upload memory.** `routes_inspect` reads the whole job into RAM, so a large plot exists
@@ -270,6 +268,43 @@ makes it the *only* path.
 
 Semantic/meaning-based matching. Rules are regex plus validators, context scoring and
 document fingerprinting today.
+
+## Benchmark
+
+`tests/benchmark/` generates 15 documents with known expected verdicts — seven text-layer,
+eight rendered as scans at 150-300dpi with rotation, sensor noise, JPEG artefacts and 8pt
+type — then scores what the inspector actually decided.
+
+```bash
+docker compose exec -T api python /app/tests/benchmark/generate.py --out /tmp/bench
+# print every PDF through an inspected queue, then:
+python3 tests/benchmark/score.py --api http://<server>:8088 --manifest ./bench/manifest.json
+```
+
+Result on real hardware (HP MFP, jobs submitted from macOS through the inspected queue):
+
+| | |
+|---|---|
+| Text-layer detection | 5/5 |
+| Scanned (OCR) | 7/7 |
+| False positives | 0 |
+| Misses | 0 |
+| Inline latency | median 164ms, max 346ms |
+
+The benchmark earned its keep on the first run: `14-card-scan-smallfont` was a MISS. OCR had
+read the digits correctly but merged one space — `4111 111111111111` — which matched neither
+the unspaced nor the four-groups-of-four pattern. A correctly-read card number went straight
+through. Two fixes followed:
+
+- **`ocr_render_scale`** — OCR was rasterising at 144dpi regardless of the scan's own
+  resolution, downsampling a 300dpi page before reading it. Now 3.0 (216dpi).
+- **`pan-loose`** — digits in any grouping, Luhn-checked. The stronger of the two: it caught
+  the card at every render scale, because OCR spacing is unpredictable and Luhn is what
+  makes a pattern that permissive safe.
+
+`02-invoice-decoys` is the false-positive canary — Luhn-failing numbers, bulk emails and a
+soft "confidential". If that one ever holds, the noise floor has moved and the queue will
+stop being read.
 
 ## Before production
 

@@ -26,6 +26,9 @@ class PrinterIn(BaseModel):
     description: str = ""
     location: str = ""
     ppd_model: str = "everywhere"
+    # "enforce" or "monitor" — see printers.MODES. Sets deep_scan_required and
+    # on_unreadable together; the individual fields still work for anything in between.
+    mode: str | None = None
     deep_scan_required: bool = False
     fail_mode: str = "open"
     on_unreadable: str = "log"
@@ -35,6 +38,7 @@ class PrinterIn(BaseModel):
 
 
 class PrinterPatch(BaseModel):
+    mode: str | None = None
     device_uri: str | None = None
     description: str | None = None
     location: str | None = None
@@ -54,6 +58,7 @@ def _out(row: PrinterQueue) -> dict:
         "janus_uri": row.janus_uri if row.device_uri else "",
         "description": row.description,
         "location": row.location,
+        "mode": printer_store.mode_of(row),
         "deep_scan_required": row.deep_scan_required,
         "fail_mode": row.fail_mode,
         "on_unreadable": row.on_unreadable,
@@ -97,7 +102,12 @@ def create_printer(
     session: Session = Depends(get_session),
     user: User = Depends(require_role("admin")),
 ) -> dict:
-    body = payload.model_dump()
+    # exclude_unset, not model_dump(): a full dump includes every field's pydantic
+    # default even when the client never sent it, so {"mode": "enforce"} would arrive
+    # bundled with deep_scan_required=False and on_unreadable="log" (this model's own
+    # defaults) — and those "explicit" values then silently beat the mode in apply_mode,
+    # which merges as MODES[mode] | payload. Only real client input may compete with it.
+    body = payload.model_dump(exclude_unset=True)
     note = body.pop("note", "")
     try:
         row = printer_store.create(session, body, actor=user.username, note=note)

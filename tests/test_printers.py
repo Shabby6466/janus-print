@@ -488,3 +488,146 @@ class TestSshOptions:
         monkeypatch.setenv("JANUS_PRINT_CUPS_SSH", "")
         with pytest.raises(cups_control.CupsControlError, match="JANUS_PRINT_CUPS_SSH"):
             cups_control.list_queues()
+
+
+class TestModes:
+    """Enforce/monitor are the two knobs operators actually reason about; deep_scan_required
+    and on_unreadable are the underlying fields. Both must stay in sync."""
+
+    def test_enforce_expands_to_hold_and_deep_scan(self, session):
+        row = printer_store.create(
+            session, payload(name="q-enforce", mode="enforce") | {"device_uri": "ipp://10.0.0.1/ipp/print"},
+            actor="admin",
+        )
+        assert row.deep_scan_required is True
+        assert row.on_unreadable == "hold"
+        assert printer_store.mode_of(row) == "enforce"
+
+    def test_monitor_expands_to_log_and_async(self, session):
+        # Deliberately not using the payload() helper here: it bakes in
+        # deep_scan_required/on_unreadable, which would override the mode and defeat the
+        # point of this test (mode alone deciding both fields).
+        row = printer_store.create(
+            session,
+            {"name": "q-monitor", "device_uri": "ipp://10.0.0.1/ipp/print", "mode": "monitor"},
+            actor="admin",
+        )
+        assert row.deep_scan_required is False
+        assert row.on_unreadable == "log"
+        assert printer_store.mode_of(row) == "monitor"
+
+    def test_explicit_fields_override_the_mode(self, session):
+        """A caller may pick a mode and still hand-tune one field."""
+        row = printer_store.create(
+            session,
+            {
+                "name": "q-mix",
+                "device_uri": "ipp://10.0.0.1/ipp/print",
+                "mode": "monitor",
+                "on_unreadable": "block",
+            },
+            actor="admin",
+        )
+        assert row.deep_scan_required is False  # from monitor
+        assert row.on_unreadable == "block"     # explicit override wins
+        assert printer_store.mode_of(row) == "custom"
+
+    def test_unknown_mode_is_rejected(self, session):
+        with pytest.raises(printer_store.PrinterError):
+            printer_store.create(
+                session,
+                payload(name="q-bad", mode="yolo") | {"device_uri": "ipp://10.0.0.1/ipp/print"},
+                actor="admin",
+            )
+
+    def test_update_can_switch_mode(self, session):
+        # Bare dict on creation, same reason as test_monitor_expands_to_log_and_async:
+        # payload()'s baked-in fields would mask the mode being tested.
+        printer_store.create(
+            session,
+            {"name": "q-switch", "device_uri": "ipp://10.0.0.1/ipp/print", "mode": "monitor"},
+            actor="admin",
+        )
+        row = printer_store.update(session, "q-switch", {"mode": "enforce"}, actor="admin")
+        assert row.deep_scan_required is True
+        assert row.on_unreadable == "hold"
+        assert printer_store.mode_of(row) == "enforce"
+
+    def test_update_mode_switch_is_not_masked_by_the_stale_row(self, session):
+        """update() merges the caller's payload onto a snapshot of the existing row. If the
+        row's own (now-stale) deep_scan_required/on_unreadable reach that merge before the
+        mode is expanded, they silently win and the mode switch does nothing — this was a
+        live bug (PATCH {"mode": "enforce"} on a monitor-mode queue returned monitor)."""
+        printer_store.create(
+            session,
+            {"name": "q-stale", "device_uri": "ipp://10.0.0.1/ipp/print", "mode": "monitor"},
+            actor="admin",
+        )
+        # Only "mode" in the payload — nothing else — exactly like the console's dropdown.
+        row = printer_store.update(session, "q-stale", {"mode": "enforce"}, actor="admin")
+        assert row.deep_scan_required is True, "mode switch was masked by the row's stale fields"
+        assert row.on_unreadable == "hold"
+
+    def test_hand_tuned_combination_reports_as_custom(self, session):
+        row = printer_store.create(
+            session,
+            payload(name="q-custom", deep_scan_required=True, on_unreadable="log")
+            | {"device_uri": "ipp://10.0.0.1/ipp/print"},
+            actor="admin",
+        )
+        assert printer_store.mode_of(row) == "custom"
+
+    def test_api_create_with_mode(self, authed_client):
+        response = authed_client.post(
+            "/api/v1/printers",
+            json=payload(name="api-enforce", mode="enforce") | {"note": "x"},
+        )
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert body["mode"] == "enforce"
+        assert body["deep_scan_required"] is True
+        assert body["on_unreadable"] == "hold"
+
+    def test_api_create_with_only_mode_set(self, authed_client):
+        """The real console request: only mode plus the required fields, nothing else.
+
+        PrinterIn.model_dump() (without exclude_unset) would include every field's own
+        pydantic default — deep_scan_required=False, on_unreadable="log" — bundled in
+        alongside mode, and those "explicit" values would then beat the mode inside
+        apply_mode's `MODES[mode] | payload` merge. This is the request shape that caught
+        it; the CRUD-level tests above call printer_store.create() directly with a bare
+        dict and never touch PrinterIn, so they passed while this endpoint was broken.
+        """
+        response = authed_client.post(
+            "/api/v1/printers",
+            json={
+                "name": "api-enforce-bare",
+                "device_uri": "ipp://172.18.104.60/ipp/print",
+                "mode": "enforce",
+                "note": "x",
+            },
+        )
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert body["mode"] == "enforce"
+        assert body["deep_scan_required"] is True
+        assert body["on_unreadable"] == "hold"
+
+    def test_api_patch_mode(self, authed_client):
+        authed_client.post(
+            "/api/v1/printers",
+            json={
+                "name": "api-switch",
+                "device_uri": "ipp://172.18.104.60/ipp/print",
+                "mode": "monitor",
+                "note": "x",
+            },
+        )
+        response = authed_client.patch(
+            "/api/v1/printers/api-switch", json={"mode": "enforce", "note": "tighten"}
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["mode"] == "enforce"
+        assert body["deep_scan_required"] is True
+        assert body["on_unreadable"] == "hold"

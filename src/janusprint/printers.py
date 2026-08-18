@@ -27,12 +27,48 @@ log = logging.getLogger(__name__)
 FAIL_MODES = {"open", "closed"}
 UNREADABLE_ACTIONS = {"allow", "log", "hold", "block"}
 
+# Two knobs, one decision. Operators think "does this stop things or just watch them", not
+# "deep_scan_required plus on_unreadable", so the console offers the decision and this maps
+# it onto the fields. Both remain individually settable for anything in between.
+#
+#   enforce  nothing prints until the scan finishes, however long that takes. A document
+#            the inspector cannot read is held rather than released.
+#   monitor  everything prints immediately; unreadable pages are OCR'd in parallel and a
+#            match becomes a retrospective incident. You cannot unprint, so this records
+#            rather than prevents.
+MODES: dict[str, dict] = {
+    "enforce": {"deep_scan_required": True, "on_unreadable": "hold"},
+    "monitor": {"deep_scan_required": False, "on_unreadable": "log"},
+}
+
+
+def mode_of(row: PrinterQueue) -> str:
+    """Which mode a queue's settings correspond to, or 'custom' for a hand-tuned mix."""
+    for name, fields in MODES.items():
+        if all(getattr(row, key) == value for key, value in fields.items()):
+            return name
+    return "custom"
+
+
+def apply_mode(payload: dict) -> dict:
+    """Expand a mode into the fields it sets. Explicit fields win, so a caller can pick a
+    mode and still override one part of it."""
+    mode = payload.pop("mode", None)
+    if not mode:
+        return payload
+    if mode == "custom":
+        return payload
+    if mode not in MODES:
+        raise PrinterError(f"mode must be one of: {', '.join(sorted(MODES))}, or custom")
+    return MODES[mode] | payload
+
 
 class PrinterError(ValueError):
     pass
 
 
 def validate(payload: dict) -> dict:
+    payload = apply_mode(dict(payload))
     fail_mode = payload.get("fail_mode", "open")
     if fail_mode not in FAIL_MODES:
         raise PrinterError(f"fail_mode must be one of: {', '.join(sorted(FAIL_MODES))}")
@@ -284,6 +320,13 @@ def update(session: Session, name: str, payload: dict, actor: str, note: str = "
     if row is None:
         raise PrinterError(f"no such queue: {name}")
 
+    # Expand mode within the caller's payload BEFORE merging onto the row snapshot. If the
+    # snapshot were merged first, its own (possibly stale) deep_scan_required/on_unreadable
+    # would already occupy those keys, and `MODES[mode] | payload` inside apply_mode would
+    # then merge the mode's values under the snapshot's — the snapshot wins, and a mode
+    # switch silently does nothing. Expanding here makes the mode's fields genuinely part
+    # of "what the caller asked to change", so they correctly override the snapshot below.
+    payload = apply_mode(dict(payload))
     merged = validate(_snapshot(row) | payload)
 
     device_changed = (

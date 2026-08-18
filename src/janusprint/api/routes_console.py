@@ -47,6 +47,7 @@ STATE_LABELS = {
     JobState.released_by_analyst: ("Released by analyst", "ok"),
     JobState.denied_by_analyst: ("Denied", "bad"),
     JobState.failed_open: ("Failed open", "gap"),
+    JobState.released_then_flagged: ("Printed, flagged after", "gap"),
     JobState.inspecting: ("Inspecting", "muted"),
     JobState.error: ("Error", "bad"),
 }

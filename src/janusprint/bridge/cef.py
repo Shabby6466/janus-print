@@ -108,6 +108,12 @@ def _signature_for(job: Job, top) -> tuple[str, str, int]:
             "Print job released without inspection",
             7,
         )
+    if job.state == JobState.released_then_flagged:
+        return (
+            "PRINT_FLAGGED_AFTER_RELEASE",
+            "Sensitive document detected after it printed",
+            max(7, _sev(top)),
+        )
     if job.state == JobState.blocked:
         return "PRINT_BLOCKED", "Print job blocked by DLP policy", max(8, _sev(top))
     if job.state == JobState.held:

@@ -13,6 +13,11 @@ __pycache__/
 build/
 dist/
 
+# Benchmark output — regenerated deterministically by tests/benchmark/generate.py, so
+# there is no reason to carry ~1MB of PDFs in the repo.
+bench/
+tests/benchmark/bench/
+
 # Local state
 *.db
 *.sqlite3

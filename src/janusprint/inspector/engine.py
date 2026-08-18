@@ -529,12 +529,34 @@ def deep_scan(session: Session, job_id: str) -> Verdict | None:
     ]
     previously_held_pending_scan = job.state == JobState.held and not blocking_matches
 
+    # Whether the job is still in the queue decides what a hit can honestly do about it.
+    already_printed = job.state in {
+        JobState.released,
+        JobState.released_by_analyst,
+        JobState.failed_open,
+        JobState.released_then_flagged,
+    }
+
     if ACTION_RANK[action] >= ACTION_RANK["hold"]:
         # OCR found something the text layer could not see.
         job.action = action
-        job.state = _state_for(action)
-        job.verdict_reason = f"OCR: {reason}"
-        _event(session, job, "deep_scan_hit", detail=f"action={action} {reason}")
+        if already_printed:
+            # Nothing to hold — the pages are out. Saying "held" here would tell an
+            # analyst the document was contained when it was not. This is an incident to
+            # investigate, not a decision to make.
+            job.state = JobState.released_then_flagged
+            job.verdict_reason = (
+                f"OCR found {reason} AFTER the job printed — this queue releases while "
+                f"the deep scan runs (deep_scan_required is off)"
+            )
+            _event(
+                session, job, "deep_scan_hit_after_release",
+                detail=f"action={action} {reason}; document already printed",
+            )
+        else:
+            job.state = _state_for(action)
+            job.verdict_reason = f"OCR: {reason}"
+            _event(session, job, "deep_scan_hit", detail=f"action={action} {reason}")
     elif previously_held_pending_scan:
         # Held only because we could not read it; OCR cleared it.
         job.state = JobState.released

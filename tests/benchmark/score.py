@@ -34,8 +34,17 @@ def login(client: httpx.Client, api: str, user: str, password: str) -> None:
         f"{api}/login", data={"username": user, "password": password, "next": "/"},
         follow_redirects=False,
     )
+    if response.status_code == 200:
+        # The console re-renders the login page on a bad password, so the status code is
+        # 200 and reads like success. Say what actually happened.
+        sys.exit(
+            f"Login rejected: wrong username or password for '{user}' at {api}.\n"
+            f"List accounts with:\n"
+            f"  docker compose exec -T postgres psql -U janus -d janusprint "
+            f'-c "SELECT username, role FROM users;"'
+        )
     if response.status_code != 303:
-        sys.exit(f"login failed ({response.status_code}) — check credentials")
+        sys.exit(f"Login failed with HTTP {response.status_code} — is {api} the console?")
 
 
 def fetch_jobs(client: httpx.Client, api: str, limit: int = 200) -> list[dict]:

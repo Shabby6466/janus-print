@@ -433,3 +433,81 @@ class TestConversionBudget:
 
         assert captured["budget"] is not None
         assert captured["budget"] <= 3.0
+
+
+class TestRetrospectiveHit:
+    """A queue with deep_scan_required=false prints first and OCRs afterwards.
+
+    When OCR then finds something, the pages are already on a desk. Recording that as
+    'held' tells an analyst the document was contained when it was not — the most
+    dangerous kind of wrong, because it looks like the system worked.
+    """
+
+    def _image_only(self) -> bytes:
+        import io
+
+        from PIL import Image
+
+        image = Image.new("RGB", (1240, 1754), "white")
+        buffer = io.BytesIO()
+        image.save(buffer, format="PDF")
+        return buffer.getvalue()
+
+    def test_hit_after_release_is_not_reported_as_held(self, session, monkeypatch):
+        from janusprint.inspector import engine
+        from janusprint.models import Job
+
+        # office-laser releases while the deep scan runs.
+        verdict = inspect_job(session, meta(queue="office-laser"), self._image_only())
+        assert verdict.release is True
+        assert verdict.state == JobState.released
+        session.commit()
+
+        monkeypatch.setattr(
+            "janusprint.inspector.ocr.ocr_pages",
+            lambda *_a: {1: "STRICTLY CONFIDENTIAL board pack"},
+        )
+        engine.deep_scan(session, verdict.job_id)
+        session.flush()
+
+        job = session.get(Job, verdict.job_id)
+        assert job.state == JobState.released_then_flagged
+        assert job.state != JobState.held, "a printed document must never read as held"
+        assert "AFTER the job printed" in job.verdict_reason
+        assert any(m.tier == "ocr" for m in job.matches)
+
+    def test_hit_while_still_held_does_hold(self, session, monkeypatch):
+        """The inverse: a queue that waits for OCR really can hold the job."""
+        from janusprint.inspector import engine
+        from janusprint.models import Job
+
+        verdict = inspect_job(session, meta(queue="finance-laser"), self._image_only())
+        assert verdict.state == JobState.held
+        session.commit()
+
+        monkeypatch.setattr(
+            "janusprint.inspector.ocr.ocr_pages",
+            lambda *_a: {1: "STRICTLY CONFIDENTIAL board pack"},
+        )
+        engine.deep_scan(session, verdict.job_id)
+        session.flush()
+        assert session.get(Job, verdict.job_id).state == JobState.held
+
+    def test_retrospective_hit_has_its_own_siem_signature(self, session, monkeypatch):
+        from janusprint.bridge.cef import event_for_job
+        from janusprint.config import get_settings
+        from janusprint.inspector import engine
+        from janusprint.models import Job
+
+        verdict = inspect_job(session, meta(queue="office-laser"), self._image_only())
+        session.commit()
+        monkeypatch.setattr(
+            "janusprint.inspector.ocr.ocr_pages", lambda *_a: {1: "STRICTLY CONFIDENTIAL"}
+        )
+        engine.deep_scan(session, verdict.job_id)
+        session.flush()
+
+        line = event_for_job(session.get(Job, verdict.job_id)).render(get_settings())
+        # Distinguishable from PRINT_HELD, so the SOC can triage it as an incident
+        # rather than a queue item awaiting a decision.
+        assert "PRINT_FLAGGED_AFTER_RELEASE" in line

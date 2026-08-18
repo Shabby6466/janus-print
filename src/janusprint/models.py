@@ -49,6 +49,9 @@ class JobState(str, enum.Enum):
     # Released without a full verdict because the inspector failed and the queue is
     # fail-open. Its own state so the coverage gap is auditable (PLAN.md §4).
     failed_open = "failed_open"
+    # Released before the deep scan finished, then matched by OCR. The document is already
+    # printed; calling this "held" would tell an analyst it was contained when it was not.
+    released_then_flagged = "released_then_flagged"
     error = "error"
 
 
