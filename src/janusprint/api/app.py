@@ -21,6 +21,7 @@ from . import (
     routes_admin,
     routes_console,
     routes_inspect,
+    routes_install,
     routes_jobs,
     routes_printers,
     routes_users,
@@ -100,6 +101,7 @@ def create_app() -> FastAPI:
     app.include_router(routes_admin.router, prefix="/api/v1")
     app.include_router(routes_users.router, prefix="/api/v1")
     app.include_router(routes_printers.router, prefix="/api/v1")
+    app.include_router(routes_install.router)
     app.include_router(routes_console.router)
 
     static_dir = Path(__file__).resolve().parent.parent / "static"
