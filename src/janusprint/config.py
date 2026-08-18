@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     inspect_deadline_seconds: float = 3.0
     ocr_page_timeout_seconds: float = 20.0
     ocr_max_pages: int = 40
+    # Page render scale for OCR, in multiples of 72dpi. The default of 2.0 meant 144dpi —
+    # below a typical scan, so a 300dpi page was downsampled before being read and small
+    # type lost its inter-word spacing. 3.0 (216dpi) measurably recovers it.
+    ocr_render_scale: float = 3.0
     # A page yielding fewer than this many characters is treated as image-only.
     text_layer_min_chars: int = 20
 

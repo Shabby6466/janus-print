@@ -53,6 +53,34 @@ rules:
         - "Serial 1234 5678 9012 3456 on the chassis plate"
         - "Grid ref 4111 1111 1111 1111 in the survey table"   # no context term
 
+  - id: pan-loose
+    name: Payment card number, any grouping
+    description: >
+      Digits in any grouping, Luhn-checked. Exists because OCR does not preserve spacing:
+      a correctly-read card came back as "4111 111111111111", which matched neither the
+      unspaced nor the four-groups-of-four pattern, and a genuine card printed as a scan
+      went through. Luhn is what makes a pattern this permissive safe.
+    pattern: '\b(?:\d[ -]?){12,22}\d\b'
+    validator: luhn
+    severity: 8
+    action: hold
+    base_confidence: 0.7
+    threshold: 0.75
+    min_count: 1
+    tags: [pci, financial, ocr]
+    fixtures:
+      positive:
+        - "Card 4111 111111111111 exp 04/28"        # as OCR actually returned it
+        - "Card 4111111111111111"
+        - "Card 4111 1111 1111 1111"
+        - "Card 4111-1111-1111-1111"
+        - "PAN 5555 5555 55554444"
+      negative:
+        - "Invoice 4111111111111112 dated 3 March"   # fails Luhn
+        - "Order 1234 5678 9012 3456 shipped"        # fails Luhn
+        - "Serial 999999999999999999 on the plate"   # fails Luhn
+        - "Phone 020 7946 0958 for bookings"         # too short
+
   - id: iban
     name: IBAN
     pattern: '\b[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}\b'

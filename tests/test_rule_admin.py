@@ -102,8 +102,12 @@ class TestCrudTakesEffect:
         data = pdf_factory(["Card 4111 1111 1111 1111 cardholder"])
         assert inspect_job(session, self._meta(), data).action == "hold"
 
-        for rule_id in ("pan-primary", "pan-spaced"):
-            rule_store.set_enabled(session, rule_id, False, actor="admin", note="testing")
+        # Every rule that can match a card, so the test survives new ones being added.
+        from janusprint.models import RuleRow
+
+        for row in session.query(RuleRow).all():
+            if "pci" in (row.tags or []):
+                rule_store.set_enabled(session, row.id, False, actor="admin", note="testing")
         session.commit()
 
         verdict = inspect_job(

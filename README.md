@@ -197,6 +197,80 @@ Run against the live lab stack, not only in tests:
   updated the verdict.
 - Inline inspection 9–12 ms warm, 240 ms cold — well inside the 3 s deadline.
 
+## Known gaps — not yet fixed
+
+Recorded honestly rather than left to be rediscovered. Nothing here is theoretical; each
+was observed on the running deployment.
+
+### 1. Docker's published ports bypass ufw
+
+Publishing a port in compose (`- "9001:9001"`) opens it via Docker's NAT rules, which run
+*before* ufw's INPUT chain. ufw reports the rule as active and is never consulted.
+
+Observed: with ufw allowing only 22, 631, 8088 and 5353 from the local subnet, MinIO on
+9001 still answered `200` from another machine on the network.
+
+Consequences today:
+
+- **MinIO (9001)** — the object store holding every archived document, with the default
+  `janus` / `janusjanus` credentials, reachable from the network.
+- **Console (8088)** — reachable from any interface, not just the subnet the ufw rule
+  names.
+- **CUPS (631)** is genuinely restricted, because it runs on host networking and is a real
+  host port rather than a Docker-published one.
+
+Fix (written, not yet deployed): bind published ports to an interface instead of filtering
+afterwards.
+
+```yaml
+  minio:
+    ports:
+      - "127.0.0.1:9001:9001"    # loopback only; reach it with ssh -L 9001:localhost:9001
+  api:
+    ports:
+      - "10.0.1.5:8088:8080"     # this host's LAN address only
+```
+
+Alternatively use Docker's `DOCKER-USER` chain, which does run before the NAT rules:
+
+```bash
+sudo iptables -I DOCKER-USER -p tcp --dport 9001 ! -s 127.0.0.1 -j DROP
+```
+
+**Do not rely on `ufw status` to tell you what is exposed on a Docker host.**
+
+### 2. Printers still accept direct connections
+
+Workstations can reach the printers on 9100, 631 and 515 directly. A job sent that way
+never touches the spooler: no inspection, no archive entry, no alert, and the console stays
+quiet — the failure mode that looks exactly like everything working.
+
+Block those ports to every printer from all sources except the print server, at the switch
+or firewall. Until then this inspects what people send through it, not everything they
+print. Everything else in this repo makes the inspected path the *easy* path; only this
+makes it the *only* path.
+
+### 3. Default credentials still in the compose file
+
+`MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` are `janus` / `janusjanus`. They should move into
+`.env` alongside the archive master key, which compose now reads.
+
+### 4. Unmeasured or untested
+
+- **OCR accuracy on real scans.** The pipeline is proven end to end, but only against
+  synthetic pages. Worth measuring before trusting `deep_scan_required` on a queue where
+  scanned documents are routine.
+- **`docs/windows/Deploy-JanusPrinter.ps1`** has never run on Windows. The one-line
+  installer served from `/install/windows/<queue>.ps1` is what has been used in practice.
+- **Upload memory.** `routes_inspect` reads the whole job into RAM, so a large plot exists
+  simultaneously in the CUPS backend, the API and ghostscript. `mem_limit: 2g` covers a few
+  concurrent jobs; streaming to a temp file would remove one copy.
+
+### 5. Deferred by choice
+
+Semantic/meaning-based matching. Rules are regex plus validators, context scoring and
+document fingerprinting today.
+
 ## Before production
 
 - `JANUS_PRINT_ARCHIVE_MASTER_KEY` and `JANUS_PRINT_SESSION_SECRET` must be real secrets.

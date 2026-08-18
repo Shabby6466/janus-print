@@ -42,7 +42,9 @@ def ocr_pages(pdf_bytes: bytes, page_numbers: list[int]) -> dict[int, str]:
         )
 
     results: dict[int, str] = {}
-    for number, png in render_pages_to_png(pdf_bytes, capped).items():
+    for number, png in render_pages_to_png(
+        pdf_bytes, capped, scale=settings.ocr_render_scale
+    ).items():
         import io
 
         try:
