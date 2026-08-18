@@ -94,13 +94,14 @@ bash```
 ### Windows — push the queue
 
 ```powershell
-.\docs\deploy-windows-printer.ps1 -Server 172.18.100.3 -Port 631 -Queue office-printer
+.\docs\windows\Deploy-JanusPrinter.ps1 -Server <server> -Queue <queue> -PrinterName "Office (Inspected)"
 ```
 
-Run as Administrator per machine, or deploy via Group Policy (Computer Configuration →
-Preferences → Control Panel Settings → Printers) or Intune. The script enables the Internet
-Printing Client feature, verifies the queue is reachable, and installs it against the
-Microsoft IPP Class Driver.
+Windows cannot discover CUPS queues at all — it uses WS-Discovery, which CUPS does not
+speak, and `wsdd` advertises hosts rather than printers. So the printer is deployed, not
+found. See [docs/windows/gpo-deployment.md](docs/windows/gpo-deployment.md) for Group
+Policy, startup-script and Intune routes; the script is idempotent and built to run as
+SYSTEM at every boot.
 
 Pass `-RemoveDirectPorts -PrinterAddress <printer-ip>` to also strip any existing direct
 TCP/IP port to the device — those bypass inspection completely.

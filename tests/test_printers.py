@@ -385,3 +385,106 @@ class TestOrphanedRows:
         with pytest.raises(printer_store.PrinterError):
             printer_store.delete(session, "stubborn", actor="admin")
         assert session.get(PrinterQueue, "stubborn") is not None
+
+
+class TestDeviceEndpointParsing:
+    """URI parsing, including IPv6.
+
+    A bracketed IPv6 literal is full of colons, so splitting on the last one both
+    truncates the address and leaves the brackets attached — and the truncated value was
+    still returned rather than raising, so the probe silently reported a healthy printer
+    as unreachable.
+    """
+
+    def test_ipv4_with_default_port(self):
+        assert cups_control.device_endpoint("ipp://10.0.1.80/ipp/print") == ("10.0.1.80", 631)
+
+    def test_ipv4_with_explicit_port(self):
+        assert cups_control.device_endpoint("socket://10.0.0.9:9100") == ("10.0.0.9", 9100)
+
+    def test_ipv6_with_default_port(self):
+        assert cups_control.device_endpoint("ipp://[2001:db8::1]/ipp/print") == (
+            "2001:db8::1",
+            631,
+        )
+
+    def test_ipv6_with_explicit_port(self):
+        assert cups_control.device_endpoint("socket://[2001:db8::1]:9100") == (
+            "2001:db8::1",
+            9100,
+        )
+
+    def test_ipv6_loopback_is_recognised(self):
+        host, _port = cups_control.device_endpoint("ipp://[::1]/ipp/print")
+        assert host in cups_control.LOOPBACK
+
+    def test_hostname_with_credentials_is_stripped(self):
+        assert cups_control.device_endpoint("ipp://user:pw@printer.local/ipp/print") == (
+            "printer.local",
+            631,
+        )
+
+    def test_scheme_default_ports(self):
+        assert cups_control.device_endpoint("lpd://10.0.0.3/queue")[1] == 515
+        assert cups_control.device_endpoint("ipps://10.0.0.3/ipp/print")[1] == 631
+
+    def test_unprobeable_scheme_is_reported(self):
+        with pytest.raises(cups_control.CupsControlError):
+            cups_control.device_endpoint("usb://HP/LaserJet")
+
+    def test_malformed_port_raises_rather_than_guessing(self):
+        with pytest.raises(cups_control.CupsControlError):
+            cups_control.device_endpoint("socket://10.0.0.9:notaport")
+
+    def test_missing_host_raises(self):
+        with pytest.raises(cups_control.CupsControlError):
+            cups_control.device_endpoint("ipp://")
+
+
+class TestSshOptions:
+    """SSH control mode.
+
+    Strict host-key checking fails every fresh deployment, and the usual operator
+    workaround (StrictHostKeyChecking=no) also accepts *changed* keys — trusting a MITM
+    that appears later. accept-new is the middle ground, but only if the decision is
+    written somewhere that survives a container restart.
+    """
+
+    def test_defaults_are_batch_and_accept_new(self, monkeypatch):
+        monkeypatch.delenv("JANUS_PRINT_CUPS_SSH_STRICT", raising=False)
+        monkeypatch.delenv("JANUS_PRINT_CUPS_SSH_KNOWN_HOSTS", raising=False)
+        options = cups_control._ssh_options()
+
+        assert "BatchMode=yes" in options
+        assert "StrictHostKeyChecking=accept-new" in options
+        # Never this: it would also accept a key that changed under us.
+        assert "StrictHostKeyChecking=no" not in options
+
+    def test_known_hosts_is_persisted_not_ephemeral(self, monkeypatch):
+        monkeypatch.delenv("JANUS_PRINT_CUPS_SSH_KNOWN_HOSTS", raising=False)
+        options = cups_control._ssh_options()
+        known_hosts = next(o for o in options if o.startswith("UserKnownHostsFile="))
+        # A path under the image's home directory resets on restart, which would turn
+        # trust-on-first-use into trust-on-every-use.
+        assert "/var/lib/janus-print/" in known_hosts
+
+    def test_connect_timeout_is_set(self, monkeypatch):
+        """An unreachable host must fail fast rather than hang on the TCP timeout."""
+        assert any(o.startswith("ConnectTimeout=") for o in cups_control._ssh_options())
+
+    def test_policy_is_overridable_for_stricter_sites(self, monkeypatch):
+        monkeypatch.setenv("JANUS_PRINT_CUPS_SSH_STRICT", "yes")
+        assert "StrictHostKeyChecking=yes" in cups_control._ssh_options()
+
+    def test_known_hosts_path_is_overridable(self, monkeypatch, tmp_path):
+        target = tmp_path / "kh" / "known_hosts"
+        monkeypatch.setenv("JANUS_PRINT_CUPS_SSH_KNOWN_HOSTS", str(target))
+        options = cups_control._ssh_options()
+        assert f"UserKnownHostsFile={target}" in options
+        assert target.parent.exists()  # created ahead of ssh needing it
+
+    def test_ssh_mode_without_a_target_is_refused(self, monkeypatch):
+        monkeypatch.setenv("JANUS_PRINT_CUPS_CONTROL", "ssh")
+        monkeypatch.setenv("JANUS_PRINT_CUPS_SSH", "")
+        with pytest.raises(cups_control.CupsControlError, match="JANUS_PRINT_CUPS_SSH"):
+            cups_control.list_queues()

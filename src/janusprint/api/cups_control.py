@@ -23,9 +23,11 @@ from __future__ import annotations
 
 import logging
 import os
+import pathlib
 import re
 import shutil
 import subprocess
+from urllib.parse import urlsplit
 
 from ..config import get_settings
 
@@ -47,6 +49,39 @@ def _mode() -> str:
 
 def _ssh_target() -> str:
     return os.environ.get("JANUS_PRINT_CUPS_SSH", "")
+
+
+# Trust-on-first-use. Strict checking fails every fresh deployment with "Host key
+# verification failed", and an operator hitting that reaches for
+# StrictHostKeyChecking=no — which also accepts *changed* keys and is strictly worse.
+# accept-new trusts the first key and refuses any later change, so a MITM after the
+# first connection is still caught.
+DEFAULT_HOST_KEY_POLICY = "accept-new"
+
+# TOFU is only worth anything if the decision survives. A container's default
+# known_hosts lives in the image's home directory and is discarded on every restart, so
+# accept-new would silently re-trust whatever answered — that is trust on *every* use,
+# not first use. Persist it on a volume-backed path.
+DEFAULT_KNOWN_HOSTS = "/var/lib/janus-print/known_hosts"
+
+
+def _ssh_options() -> list[str]:
+    policy = os.environ.get("JANUS_PRINT_CUPS_SSH_STRICT", DEFAULT_HOST_KEY_POLICY)
+    known_hosts = os.environ.get("JANUS_PRINT_CUPS_SSH_KNOWN_HOSTS", DEFAULT_KNOWN_HOSTS)
+
+    try:
+        pathlib.Path(known_hosts).parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:  # non-fatal; ssh will fall back to its own default
+        log.warning("cannot prepare known_hosts at %s: %s", known_hosts, exc)
+
+    return [
+        "-o", "BatchMode=yes",                      # never prompt for a password
+        "-o", f"StrictHostKeyChecking={policy}",
+        "-o", f"UserKnownHostsFile={known_hosts}",
+        # Without this, an unreachable host hangs for the OS TCP timeout rather than the
+        # command timeout — the same failure that made the console appear to freeze.
+        "-o", "ConnectTimeout=5",
+    ]
 
 
 # Status reads happen while a page is rendering, so they must fail fast. Queue creation
@@ -74,7 +109,7 @@ def _run(args: list[str], *, check_output: bool = False, timeout: float | None =
         target = _ssh_target()
         if not target:
             raise CupsControlError("JANUS_PRINT_CUPS_SSH not set for ssh mode")
-        args = ["ssh", "-o", "BatchMode=yes", target, *args]
+        args = ["ssh", *_ssh_options(), target, *args]
     elif shutil.which(args[0]) is None:
         raise CupsControlError(f"{args[0]} not found on this host")
 
@@ -310,35 +345,44 @@ def submit_file(queue: str, path: str, title: str) -> str:
 
 LOOPBACK = {"localhost", "127.0.0.1", "::1", "ip6-localhost"}
 
+DEFAULT_PORTS = {"ipp": 631, "ipps": 631, "http": 80, "https": 443, "socket": 9100, "lpd": 515}
+
 
 def device_endpoint(device_uri: str) -> tuple[str, int]:
     """Host and port to probe for reachability, derived from the device URI.
+
+    Parsing is delegated to urlsplit rather than split by hand: an IPv6 literal is
+    bracketed and full of colons, so a rpartition(":") both truncates the address and
+    leaves the brackets on, and socket.create_connection accepts neither.
 
     Note the probe runs from wherever the API lives, while the device URI is written from
     the spooler's point of view. For a routable address the two agree; for a loopback
     address they do not, which is why callers reject those rather than probing themselves
     and reporting a meaningless refusal.
     """
-    scheme, _, rest = device_uri.partition("://")
+
+    scheme, separator, rest = device_uri.partition("://")
+    if not separator or not rest:
+        raise CupsControlError(f"cannot parse device URI {device_uri!r}")
     scheme = scheme.lower()
-    hostport = rest.split("/", 1)[0]
 
-    if "@" in hostport:  # strip any credentials
-        hostport = hostport.rsplit("@", 1)[1]
+    # Re-parse under a known scheme so urlsplit applies standard authority rules;
+    # .hostname strips IPv6 brackets and lowercases, .port validates the range.
+    parsed = urlsplit(f"http://{rest}")
+    try:
+        host, port = parsed.hostname, parsed.port
+    except ValueError as exc:  # malformed or out-of-range port
+        raise CupsControlError(f"cannot parse device URI {device_uri!r}: {exc}") from exc
 
-    if ":" in hostport:
-        host, _, port = hostport.rpartition(":")
-        try:
-            return host, int(port)
-        except ValueError:
-            pass
-    else:
-        host = hostport
+    if not host:
+        raise CupsControlError(f"no host in device URI {device_uri!r}")
 
-    default = {"ipp": 631, "ipps": 631, "http": 80, "https": 443, "socket": 9100, "lpd": 515}
-    if scheme not in default:
-        raise CupsControlError(f"cannot probe a {scheme}:// device")
-    return host, default[scheme]
+    if port is None:
+        if scheme not in DEFAULT_PORTS:
+            raise CupsControlError(f"cannot probe a {scheme}:// device")
+        port = DEFAULT_PORTS[scheme]
+
+    return host, port
 
 
 def available() -> bool:

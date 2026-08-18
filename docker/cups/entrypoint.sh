@@ -101,29 +101,61 @@ else
   echo "== lab queues disabled (CREATE_LAB_QUEUES=false) =="
 fi
 
-# A queue is only advertised over DNS-SD if it is explicitly shared, and recent CUPS
-# defaults that to false — discovery silently does nothing without this.
+# Sharing decides what is advertised, and it has to converge without human action.
 #
-# Share by device URI rather than by name: a janus:// queue is inspected and safe to
-# advertise, anything else talks to a device directly and must stay hidden, or clients
-# would discover a route around the inspector. This is correct by construction, so
-# operator-created queues (office-printer and friends) are handled without editing a list.
-if [ "${ENABLE_DNSSD}" = "true" ]; then
-  shared=""
-  hidden=""
-  while read -r _ _ queue uri; do
-    queue="${queue%:}"
+# Only queues whose device URI is janus:// are shared: those are inspected. Anything else
+# talks to hardware directly, and advertising it would hand clients a documented route
+# around the inspector.
+#
+# This runs as a loop rather than once at startup because printers are created from the
+# console, by an API that is usually on another host — and CUPS refuses
+# printer-is-shared over some remote connections ("Cannot change printer-is-shared for
+# remote queues"), inconsistently enough that it cannot be relied on. Without this sweep a
+# newly added printer stays invisible to clients until someone restarts the container.
+#
+# Idempotent: printers.conf is read first, so only queues in the wrong state are touched.
+share_state() {
+  awk '
+    /^<(Default)?Printer /  { name = $2; sub(/>$/, "", name); uri = ""; shared = "No" }
+    /^DeviceURI /           { uri = $2 }
+    /^Shared /              { shared = $2 }
+    /^<\/Printer>/          { if (name != "") print name, uri, shared; name = "" }
+  ' /etc/cups/printers.conf 2>/dev/null
+}
+
+apply_sharing() {
+  changed=""
+  while read -r queue uri shared; do
+    [ -z "${queue}" ] && continue
     case "${uri}" in
       janus://*)
-        lpadmin -p "${queue}" -o printer-is-shared=true && shared="${shared} ${queue}"
+        if [ "${shared}" != "Yes" ]; then
+          lpadmin -p "${queue}" -o printer-is-shared=true 2>/dev/null \
+            && changed="${changed} +${queue}"
+        fi
         ;;
       *)
-        lpadmin -p "${queue}" -o printer-is-shared=false && hidden="${hidden} ${queue}"
+        if [ "${shared}" = "Yes" ]; then
+          lpadmin -p "${queue}" -o printer-is-shared=false 2>/dev/null \
+            && changed="${changed} -${queue}"
+        fi
         ;;
     esac
-  done < <(lpstat -v 2>/dev/null)
-  echo "== advertised (inspected):${shared:- none} =="
-  echo "== hidden (direct to device):${hidden:- none} =="
+  done <<EOF
+$(share_state)
+EOF
+  [ -n "${changed}" ] && echo "== sharing updated:${changed} =="
+  return 0
+}
+
+if [ "${ENABLE_DNSSD}" = "true" ]; then
+  apply_sharing
+  (
+    while sleep "${SHARE_SWEEP_INTERVAL:-15}"; do
+      apply_sharing
+    done
+  ) &
+  echo "== sharing sweep every ${SHARE_SWEEP_INTERVAL:-15}s: janus:// queues advertised, others hidden =="
 fi
 
 echo "== queues ready =="
