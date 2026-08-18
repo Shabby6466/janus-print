@@ -377,3 +377,59 @@ class TestDeepScanFormats:
         kinds = {e.kind for e in session.query(JobEvent).filter_by(job_id=job.id)}
         assert job.state == JobState.held
         assert "deep_scan_failed" in kinds or job.scan_tier.value == "unreadable"
+
+
+class TestConversionBudget:
+    """Ghostscript must not outlive the caller's inline deadline.
+
+    The CUPS backend gives up after its own HTTP timeout and releases the job fail-open.
+    A conversion that runs past that produces a verdict for a document already on paper.
+    """
+
+    def test_extract_caps_conversion_to_the_remaining_budget(self, monkeypatch):
+        from janusprint.inspector import extract as extract_module
+
+        seen: dict = {}
+
+        def fake_run(command, **kwargs):
+            seen["timeout"] = kwargs.get("timeout")
+            raise TimeoutError("stand-in")
+
+        monkeypatch.setattr(extract_module.subprocess, "run", fake_run)
+        extract_module.extract(b"%!PS-Adobe-3.0\nsomething", budget=1.5)
+        assert seen["timeout"] == 1.5
+
+    def test_conversion_never_gets_less_than_a_second(self, monkeypatch):
+        from janusprint.inspector import extract as extract_module
+
+        seen: dict = {}
+
+        def fake_run(command, **kwargs):
+            seen["timeout"] = kwargs.get("timeout")
+            raise TimeoutError("stand-in")
+
+        monkeypatch.setattr(extract_module.subprocess, "run", fake_run)
+        # An already-exhausted budget must not mean a zero-second timeout.
+        extract_module.extract(b"%!PS-Adobe-3.0\nsomething", budget=-4.0)
+        assert seen["timeout"] >= 1.0
+
+    def test_budget_shrinks_as_inspection_proceeds(self, session, pdf_factory):
+        """The engine passes what is left, not the full budget."""
+        from janusprint.inspector import engine
+
+        captured: dict = {}
+        original = engine.extract
+
+        def spy(data, budget=None):
+            captured["budget"] = budget
+            return original(data, budget=budget)
+
+        monkey = pytest.MonkeyPatch()
+        monkey.setattr(engine, "extract", spy)
+        try:
+            inspect_job(session, meta(), pdf_factory(["hello"]), deadline=3.0)
+        finally:
+            monkey.undo()
+
+        assert captured["budget"] is not None
+        assert captured["budget"] <= 3.0

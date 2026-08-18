@@ -125,14 +125,20 @@ def sniff_format(data: bytes) -> str:
     return "text"
 
 
-def extract(data: bytes) -> ExtractionResult:
-    """Best-effort text extraction. Never raises."""
+def extract(data: bytes, budget: float | None = None) -> ExtractionResult:
+    """Best-effort text extraction. Never raises.
+
+    `budget` is the seconds remaining in the caller's inline deadline. Conversion is
+    capped by it, because overrunning is worse than failing: the CUPS backend gives up
+    first, releases the job fail-open, and the verdict this call eventually produces is
+    applied to a document that has already printed.
+    """
     fmt = sniff_format(data)
     try:
         if fmt == "pdf":
             return _extract_pdf(data)
         if fmt in {"postscript", "pcl"}:
-            converted = _to_pdf(data, fmt)
+            converted = _to_pdf(data, fmt, budget)
             if converted is None:
                 return ExtractionResult(format=fmt, unreadable=True, error="ghostscript failed")
             result = _extract_pdf(converted)
@@ -177,8 +183,8 @@ def _extract_pdf(data: bytes) -> ExtractionResult:
     return ExtractionResult(pages=pages, page_count=len(pages), format="pdf")
 
 
-def _to_pdf(data: bytes, fmt: str) -> bytes | None:
-    """Convert PostScript/PCL to PDF via ghostscript."""
+def _to_pdf(data: bytes, fmt: str, budget: float | None = None) -> bytes | None:
+    """Convert PostScript/PCL to PDF via ghostscript, inside the inline budget."""
     gs = shutil.which("gs")
     if gs is None:
         log.error("ghostscript not installed; cannot read %s jobs", fmt)
@@ -203,7 +209,9 @@ def _to_pdf(data: bytes, fmt: str) -> bytes | None:
             subprocess.run(  # noqa: S603 - fixed argv, no shell
                 command,
                 check=True,
-                timeout=get_settings().inspect_deadline_seconds * 4,
+                # Never exceed what the caller has left. A conversion that outruns the
+                # deadline produces a verdict for a job the backend already released.
+                timeout=max(1.0, budget if budget is not None else get_settings().inspect_deadline_seconds),
                 capture_output=True,
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:

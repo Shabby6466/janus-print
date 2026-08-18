@@ -72,6 +72,11 @@ services:
       # Editable without a rebuild: queue policy and the seed rule packs.
       - ./config:/app/config:ro
       - ./rules:/app/rules:ro
+    # A print job is held in memory in three places at once: the CUPS backend, this
+    # process (routes_inspect reads the upload whole), and ghostscript during conversion.
+    # The backend refuses anything over 200MB inline, so size the ceiling for a few
+    # concurrent large plots rather than for the average page.
+    mem_limit: 2g
     ports:
       # 8088 on the host: 8080 is commonly already taken by a local dev server.
       - "8088:8080"
@@ -84,6 +89,8 @@ services:
       context: .
       dockerfile: docker/api/Dockerfile
     command: ["janus-print-worker"]
+    # OCR rasterises pages at scale, which is the other memory-hungry path.
+    mem_limit: 2g
     volumes:
       - ./config:/app/config:ro
       - ./rules:/app/rules:ro

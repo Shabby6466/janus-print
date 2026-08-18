@@ -120,3 +120,7 @@ class HealthOut(BaseModel):
     archive_backend: str
     siem_enabled: bool
     database: str
+    # "re2" is linear-time and safe for operator-authored patterns; "re" backtracks and a
+    # crafted document can hang inspection.
+    regex_engine: str = "re2"
+    regex_linear_time: bool = True

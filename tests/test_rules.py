@@ -218,3 +218,74 @@ class TestTextPlausibility:
             format="pdf",
         )
         assert result.pages_without_text(20) == []
+
+
+class TestRegexEngineSafety:
+    """Operators author these patterns, and they run against every printed page.
+
+    Python's `re` backtracks: `(a+)+$` against 24 characters takes ~1s, 30 takes minutes.
+    `finditer` runs in C and never yields, so the engine's deadline check — which only runs
+    between pattern calls — cannot fire. One crafted document would hang inspection and drop
+    every queue into fail-open.
+    """
+
+    def test_engine_is_linear_time(self):
+        from janusprint.inspector import regex_engine
+
+        assert regex_engine.LINEAR_TIME, (
+            "RE2 is not active; a rule with nested quantifiers can hang the inspector"
+        )
+
+    def test_catastrophic_pattern_completes_instantly(self):
+        import time
+
+        from janusprint.inspector.rules import Rule, RuleSet
+
+        rule = Rule(id="evil", name="Evil", pattern=r"(a+)+$", base_confidence=0.9)
+        ruleset = RuleSet([rule])
+
+        # Under `re` this input takes minutes; RE2 is linear.
+        started = time.monotonic()
+        ruleset.evaluate_page("a" * 4000 + "!", page=1)
+        assert time.monotonic() - started < 2.0
+
+    def test_lookahead_is_rejected_with_an_explanation(self):
+        import pytest
+
+        from janusprint.inspector.rules import Rule
+
+        with pytest.raises(Exception) as caught:
+            Rule(id="la", name="Lookahead", pattern=r"foo(?=bar)")
+        assert "lookahead" in str(caught.value).lower()
+
+    def test_backreference_is_rejected(self):
+        import pytest
+
+        from janusprint.inspector.rules import Rule
+
+        with pytest.raises(Exception) as caught:
+            Rule(id="br", name="Backref", pattern=r"(\w+)\s+\1")
+        assert "backreference" in str(caught.value).lower()
+
+    def test_ordinary_patterns_still_work(self):
+        from janusprint.inspector.rules import RuleSet, load_rules
+
+        ruleset = load_rules()
+        assert len(ruleset) >= 10
+        hits = ruleset.evaluate_page("Card 4111 1111 1111 1111 cardholder", 1)
+        assert hits
+
+        rule = ruleset.rules[0]
+        assert isinstance(RuleSet([rule]).evaluate_page("nothing here", 1), list)
+
+    def test_case_insensitivity_is_preserved(self):
+        from janusprint.inspector.rules import Rule, RuleSet
+
+        rule = Rule(id="ci", name="CI", pattern=r"\bconfidential\b", base_confidence=0.9)
+        assert RuleSet([rule]).evaluate_page("STRICTLY CONFIDENTIAL", 1)
+
+        sensitive = Rule(
+            id="cs", name="CS", pattern=r"\bconfidential\b",
+            ignore_case=False, base_confidence=0.9,
+        )
+        assert not RuleSet([sensitive]).evaluate_page("STRICTLY CONFIDENTIAL", 1)

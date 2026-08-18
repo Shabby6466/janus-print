@@ -27,6 +27,7 @@ import yaml
 from pydantic import BaseModel, Field, field_validator
 
 from ..config import ACTION_RANK, Action, get_settings
+from .regex_engine import UnsupportedPattern, compile_pattern
 from .validators import resolve
 
 
@@ -70,10 +71,12 @@ class Rule(BaseModel):
     @field_validator("pattern")
     @classmethod
     def _compilable(cls, value: str) -> str:
+        # Compiled with the real engine, so an unusable pattern is rejected when the rule
+        # is saved rather than discovered on the print path.
         try:
-            re.compile(value)
-        except re.error as exc:
-            raise ValueError(f"invalid regex: {exc}") from exc
+            compile_pattern(value)
+        except UnsupportedPattern as exc:
+            raise ValueError(str(exc)) from exc
         return value
 
     @field_validator("severity")
@@ -83,9 +86,8 @@ class Rule(BaseModel):
             raise ValueError("severity must be 0-10 (CEF scale)")
         return value
 
-    def compiled(self) -> re.Pattern[str]:
-        flags = re.IGNORECASE if self.ignore_case else 0
-        return re.compile(self.pattern, flags)
+    def compiled(self):
+        return compile_pattern(self.pattern, self.ignore_case)
 
     def mask(self, value: str) -> str:
         """Redact a matched value for storage and alerting. Raw values never leave the

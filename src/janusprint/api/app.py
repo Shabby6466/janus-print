@@ -118,8 +118,12 @@ def create_app() -> FastAPI:
         except Exception as exc:  # noqa: BLE001
             database = f"error: {exc}"
 
+        from ..inspector import regex_engine
+
         return HealthOut(
             status="ok" if database == "ok" else "degraded",
+            regex_engine=regex_engine.ENGINE,
+            regex_linear_time=regex_engine.LINEAR_TIME,
             rules_loaded=len(get_ruleset()),
             ocr_available=shutil.which("tesseract") is not None,
             ghostscript_available=shutil.which("gs") is not None,

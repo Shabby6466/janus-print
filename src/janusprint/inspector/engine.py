@@ -178,7 +178,8 @@ def _run_inspection(
 ) -> Verdict:
     settings = get_settings()
 
-    result = extract(data)
+    remaining = budget - (time.monotonic() - started)
+    result = extract(data, budget=remaining)
     job.page_count = result.page_count
 
     if result.unreadable:

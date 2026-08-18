@@ -6,9 +6,10 @@ and ships the event to Janus SIEM as CEF over syslog.
 Python 3.12 end to end. Janus next door is PHP/MySQL; the only contract between them is one
 syslog line — no shared runtime, no shared database.
 
-See [PLAN.md](PLAN.md) for the design and the reasoning behind each decision, and
-[docs/connection.md](docs/connection.md) for network topology, adding the queue on each
-platform, the direct-printing bypass, and a troubleshooting table.
+See [PLAN.md](PLAN.md) for the design and the reasoning behind each decision,
+[docs/flow.md](docs/flow.md) for how a document travels through the code (file and line by
+step), and [docs/connection.md](docs/connection.md) for network topology, adding the queue
+on each platform, the direct-printing bypass, and a troubleshooting table.
 
 ---
 
