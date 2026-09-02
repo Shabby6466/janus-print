@@ -109,6 +109,8 @@ services:
       JANUS_PRINT_SIEM_HOST: siem
       JANUS_PRINT_DEV_MODE: "${JANUS_PRINT_DEV_MODE:-true}"
       JANUS_PRINT_ARCHIVE_MASTER_KEY: "${JANUS_PRINT_ARCHIVE_MASTER_KEY:-lab-master-key-not-for-production}"
+      JANUS_PRINT_CUPS_CONTROL: local
+      CUPS_SERVER: cups
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}

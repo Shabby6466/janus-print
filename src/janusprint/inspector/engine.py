@@ -562,6 +562,12 @@ def deep_scan(session: Session, job_id: str) -> Verdict | None:
         job.state = JobState.released
         job.verdict_reason = "deep scan clear"
         _event(session, job, "deep_scan_clear", detail="OCR found nothing; released")
+        from ..api import cups_control
+
+        try:
+            cups_control.release(job.queue, job.cups_job_id)
+        except Exception as exc:
+            log.warning("could not resume CUPS job %s after OCR clear: %s", job.id, exc)
     else:
         _event(session, job, "deep_scan_clear", detail="OCR found nothing")
 

@@ -48,8 +48,13 @@ services:
       - "127.0.0.1:514:514/udp"
 
   # cups is on the host network now, so "cups" no longer resolves inside the bridge
-  # network. Point the test client at the host gateway instead. Real workstations are
-  # unaffected — they reach the server by its LAN address.
+  # network. Point the test client and worker at the host gateway instead.
+  worker:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      CUPS_SERVER: host.docker.internal:631
+
   client:
     extra_hosts:
       - "host.docker.internal:host-gateway"

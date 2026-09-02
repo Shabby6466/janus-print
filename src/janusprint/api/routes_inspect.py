@@ -36,7 +36,7 @@ def preflight(
         .where(
             Job.queue == queue,
             Job.cups_job_id == cups_job_id,
-            Job.state == JobState.released_by_analyst,
+            Job.state.in_([JobState.released_by_analyst, JobState.released]),
         )
         .order_by(Job.created_at.desc())
         .limit(1)
@@ -46,7 +46,7 @@ def preflight(
     return PreflightResponse(
         pass_through=True,
         job_id=job.id,
-        reason=f"released by analyst: {job.verdict_reason}",
+        reason=f"cleared: {job.verdict_reason}",
     )
 
 
