@@ -65,6 +65,26 @@ async function approveContent(requestId) {
   const result = await post(`/api/v1/jobs/content-requests/${requestId}/approve`, {});
   if (result) location.reload();
 }
+
+// Live auto-refresh for Dashboard, Queue, and pending OCR/Inspect jobs
+(function() {
+  const activePage = '{{ active }}';
+  const autoRefreshPages = ['dashboard', 'queue'];
+  const isPending = document.querySelector('[data-auto-refresh="true"]');
+
+  if (autoRefreshPages.includes(activePage) || isPending) {
+    setInterval(() => {
+      // Don't reload if tab is not focused/visible
+      if (document.visibilityState !== 'visible') return;
+      // Don't reload if a dialog is open or user is typing in a field
+      if (document.querySelector('dialog[open]')) return;
+      const activeEl = document.activeElement;
+      if (activeEl && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeEl.tagName)) return;
+
+      location.reload();
+    }, 4000);
+  }
+})();
 </script>
 </body>
 </html>
