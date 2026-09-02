@@ -25,6 +25,7 @@ from . import (
     routes_jobs,
     routes_printers,
     routes_users,
+    routes_validators,
 )
 from .auth import ensure_admin_user
 
@@ -45,12 +46,19 @@ async def lifespan(app: FastAPI):
 
     from .. import printers as printer_store
 
+    from .. import validator_store
+
     with session_scope() as session:
         seeded = seed_from_yaml(session)
         printer_store.seed_from_yaml(session)
         # A queue created by hand with lpadmin would otherwise be invisible here while
         # silently running the default policy.
         printer_store.adopt_existing(session)
+        validator_store.seed_builtins(session)
+        # resolve() runs on the print path and must stay a synchronous dict lookup, so any
+        # console-defined validator has to be compiled into memory before the first job —
+        # otherwise the first request after a restart would reject it as unknown.
+        validator_store.refresh_registry(session, force=True)
     if seeded:
         log.info("seeded %d rules from the shipped YAML packs", seeded)
 
@@ -101,6 +109,7 @@ def create_app() -> FastAPI:
     app.include_router(routes_admin.router, prefix="/api/v1")
     app.include_router(routes_users.router, prefix="/api/v1")
     app.include_router(routes_printers.router, prefix="/api/v1")
+    app.include_router(routes_validators.router, prefix="/api/v1")
     app.include_router(routes_install.router)
     app.include_router(routes_console.router)
 

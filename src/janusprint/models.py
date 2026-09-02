@@ -306,6 +306,56 @@ class PrinterRevision(Base):
     snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class ValidatorRow(Base):
+    """A checksum validator, editable from the console.
+
+    Six algorithms (luhn, iban, us_ssn, nhs_number, mod11, entropy) ship as protected
+    Python code — `builtin=True`, never editable or deletable from here, because their
+    real logic (IBAN's letter-to-number rearrangement, SSN's never-issued ranges, Luhn's
+    digit-doubling) doesn't reduce to a simple form and is worth keeping as tested code
+    rather than reinventing per-deployment.
+
+    Everything past that is a genuinely common shape — a weighted-sum-mod-N checksum, which
+    covers most national ID and account-number schemes, or an entropy threshold for
+    secrets — and those ARE definable from the console via `kind` + `params`. Never actual
+    code: a validator runs against every document printed in the building, so the console
+    can only ever hand it a small, safe, declarative shape, not a text box that becomes
+    exec().
+    """
+
+    __tablename__ = "validators"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(256))
+    description: Mapped[str] = mapped_column(Text, default="")
+    kind: Mapped[str] = mapped_column(String(32))  # python | weighted_mod | entropy
+    params: Mapped[dict] = mapped_column(JSON, default=dict)
+    fixtures: Mapped[dict] = mapped_column(JSON, default=dict)  # {"pass": [...], "fail": [...]}
+    builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
+    updated_by: Mapped[str] = mapped_column(String(128), default="system")
+
+
+class ValidatorRevision(Base):
+    """Every change to a validator. A checksum that silently passes everything looks
+    identical to a working one until a document gets through it — this stays answerable."""
+
+    __tablename__ = "validator_revisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    validator_id: Mapped[str] = mapped_column(String(64), index=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    actor: Mapped[str] = mapped_column(String(128))
+    change: Mapped[str] = mapped_column(String(16))
+    note: Mapped[str] = mapped_column(Text, default="")
+    snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 class User(Base):
     __tablename__ = "users"
 

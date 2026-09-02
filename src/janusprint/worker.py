@@ -85,9 +85,16 @@ def main() -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
-    from .db import init_db
+    from . import validator_store
+    from .db import init_db, session_scope
 
     init_db()
+
+    # deep_scan() runs in this process and evaluates rules, so it needs the same custom
+    # validator registry the API populated — resolve() is a synchronous in-memory lookup,
+    # not a DB query, and each process keeps its own copy.
+    with session_scope() as session:
+        validator_store.refresh_registry(session, force=True)
 
     threading.Thread(target=run_retention_loop, daemon=True).start()
 

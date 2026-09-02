@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% set active = 'validators' %}
+{% block title %}Validator history — janus-print{% endblock %}
+
+{% block content %}
+<h1>Validator change history</h1>
+<p class="sub">
+  {% if validator_id %}
+    Changes to <span class="mono">{{ validator_id }}</span> &middot; <a href="/validators/history">all validators</a>
+  {% else %}
+    Who changed a checksum, when, and why.
+  {% endif %}
+</p>
+
+<div class="banner info">
+  A validator with a wrong weight either rejects everything or accepts everything, and both
+  look identical to correct until a real document exposes it. These entries are kept
+  permanently, including for validators that have since been removed.
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>When</th><th>Validator</th><th>Change</th><th>By</th><th>Reason</th></tr></thead>
+    <tbody>
+    {% for revision in revisions %}
+      <tr>
+        <td class="mono">{{ revision.at.strftime('%d %b %H:%M') }}</td>
+        <td class="mono"><a href="/validators/history?validator_id={{ revision.validator_id }}">{{ revision.validator_id }}</a></td>
+        <td>
+          <span class="pill {{ 'bad' if revision.change in ('deleted','disabled') else 'ok' if revision.change == 'created' else 'muted' }}">
+            {{ revision.change }}
+          </span>
+        </td>
+        <td>{{ revision.actor }}</td>
+        <td class="wrap note">{{ revision.note or '-' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty">No changes recorded.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p style="margin-top:16px"><a class="btn" href="/validators">Back to validators</a></p>
+{% endblock %}

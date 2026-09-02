@@ -28,17 +28,20 @@ def _isolated_settings(tmp_path, monkeypatch):
     from janusprint.inspector import engine
 
     from janusprint.inspector import store as rule_store
+    from janusprint.inspector import validators as validator_engine
 
     config.reset_caches()
     db.reset_engine()
     store.reset_archive()
     cef.reset_bridge()
     rule_store.invalidate_cache()
+    validator_engine.set_custom_registry({})
 
     db.init_db()
     # Rules live in the database now; seed the shipped packs so tests exercise the same
     # ruleset the product ships with.
     from janusprint import printers as printer_store
+    from janusprint import validator_store
     from janusprint.models import PrinterQueue
 
     with db.session_scope() as seeding:
@@ -70,6 +73,8 @@ def _isolated_settings(tmp_path, monkeypatch):
                 description="permissive queue fixture",
             )
         )
+        validator_store.seed_builtins(seeding)
+        validator_store.refresh_registry(seeding, force=True)
     rule_store.invalidate_cache()
     printer_store.invalidate_cache()
     yield
@@ -83,6 +88,7 @@ def _isolated_settings(tmp_path, monkeypatch):
     from janusprint import printers as printer_store
 
     printer_store.invalidate_cache()
+    validator_engine.set_custom_registry({})
 
 
 @pytest.fixture

@@ -1,0 +1,332 @@
+{% extends "base.html" %}
+{% set active = 'validators' %}
+{% block title %}Validators — janus-print{% endblock %}
+
+{% block content %}
+<h1>Validators</h1>
+<p class="sub">
+  {{ validators|length }} validators. A validator is a structural check that runs after a
+  rule's pattern matches — the difference between "every 16-digit number" and "an actual
+  payment card". Changes apply to the next job, no restart.
+</p>
+
+<div class="banner info">
+  A validator runs against every document printed in the building, so this can never accept
+  arbitrary code. New validators are built from a <strong>weighted-sum-mod-N checksum</strong>
+  (the shape behind Luhn, NHS numbers, and most national ID or account-number check digits)
+  or an <strong>entropy threshold</strong> for secrets. The six protected algorithms below
+  cover cases too irregular to reduce to that form and cannot be edited from here.
+</div>
+
+<div id="opStatus" class="note" style="min-height:1.2em;margin-bottom:8px"></div>
+
+<dialog id="reasonDialog" class="panel" style="max-width:520px;border:1px solid var(--line)">
+  <h3 id="reasonTitle" style="margin-top:0">Reason for this change</h3>
+  <p class="note">Recorded permanently against this validator.</p>
+  <input id="reasonInput" type="text" style="width:100%">
+  <div id="reasonErr" class="err"></div>
+  <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+    <button class="btn" id="reasonCancel">Cancel</button>
+    <button class="btn primary" id="reasonSubmit">OK</button>
+  </div>
+</dialog>
+
+{% if user.role == 'admin' %}
+<div class="panel" style="margin-bottom:20px">
+  <h3>Add a validator</h3>
+
+  <div class="row" style="gap:12px">
+    <div style="flex:1">
+      <label for="nv_id">Id (permanent slug)</label>
+      <input id="nv_id" type="text" placeholder="employee-id-mod11">
+    </div>
+    <div style="flex:2">
+      <label for="nv_name">Name</label>
+      <input id="nv_name" type="text" placeholder="Employee ID check digit">
+    </div>
+  </div>
+
+  <label for="nv_description">Description — what this checks, and why</label>
+  <input id="nv_description" type="text" placeholder="Internal employee ID scheme, mod-11 check digit">
+
+  <label for="nv_kind">Kind</label>
+  <select id="nv_kind" onchange="renderKindFields()">
+    {% for kind, doc in kinds.items() %}
+      <option value="{{ kind }}">{{ kind }} — {{ doc.description[:60] }}...</option>
+    {% endfor %}
+  </select>
+
+  <div id="kindFields" style="margin-top:10px"></div>
+
+  <div class="row" style="gap:12px;margin-top:10px">
+    <div style="flex:1">
+      <label for="nv_pass">Must PASS (one per line)</label>
+      <textarea id="nv_pass" rows="4" class="mono" placeholder="a real, valid example"></textarea>
+    </div>
+    <div style="flex:1">
+      <label for="nv_fail">Must FAIL (one per line)</label>
+      <textarea id="nv_fail" rows="4" class="mono" placeholder="a structurally similar but invalid example"></textarea>
+    </div>
+  </div>
+  <p class="note">
+    At least one of each is required. This is what proves the checksum actually checks
+    something before it ever runs against real print traffic — a validator with a wrong
+    weight either rejects everything or accepts everything, and both look identical to
+    correct until a real document exposes it.
+  </p>
+
+  <div class="row" style="gap:12px;align-items:flex-end">
+    <div style="flex:2">
+      <label for="nv_sample">Try a sample first</label>
+      <input id="nv_sample" type="text" placeholder="paste a value to test">
+    </div>
+    <div style="flex:1">
+      <button class="btn" type="button" onclick="tryValidator()">Test</button>
+    </div>
+  </div>
+  <div id="tryOut" class="note mono" style="margin-top:6px"></div>
+
+  <div id="addErr" class="err" style="white-space:pre-wrap;margin-top:10px"></div>
+  <button class="btn primary" style="margin-top:8px" onclick="addValidator()">Add validator</button>
+</div>
+{% endif %}
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Validator</th>
+        <th>Kind</th>
+        <th>Fixtures</th>
+        <th>Updated</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for v in validators %}
+      <tr {% if not v.enabled %}style="opacity:.5"{% endif %}>
+        <td class="wrap">
+          <strong>{{ v.name }}</strong>
+          {% if v.builtin %}<span class="pill muted">protected</span>{% endif %}
+          {% if not v.enabled %}<span class="pill muted">disabled</span>{% endif %}
+          <br><span class="mono note">{{ v.id }}</span>
+          {% if v.description %}<div class="note">{{ v.description }}</div>{% endif %}
+        </td>
+        <td class="mono">{{ v.kind }}</td>
+        <td class="mono">
+          {% if v.builtin %}—{% else %}
+            {{ (v.fixtures.get('pass') or []) | length }} pass /
+            {{ (v.fixtures.get('fail') or []) | length }} fail
+          {% endif %}
+        </td>
+        <td class="mono note">
+          {% if not v.builtin %}{{ v.updated_at.strftime('%d %b') }}<br>{{ v.updated_by }}{% endif %}
+        </td>
+        <td>
+          {% if user.role == 'admin' and not v.builtin %}
+            <a class="btn" href="/validators/history?validator_id={{ v.id }}">History</a>
+            <button class="btn ghost" onclick="toggleValidator('{{ v.id }}', {{ 'false' if v.enabled else 'true' }})">
+              {{ 'Disable' if v.enabled else 'Enable' }}
+            </button>
+            <button class="btn danger" onclick="removeValidator('{{ v.id }}')">Remove</button>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="empty">No validators.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<p style="margin-top:14px"><a class="btn" href="/validators/history">Change history</a></p>
+
+<script>
+  const KIND_DOCS = {{ kinds | tojson }};
+
+  function setStatus(text, isError) {
+    const el = document.getElementById('opStatus');
+    el.textContent = text;
+    el.style.color = isError ? '#e09a83' : '';
+    console.log('[janus-print]', text);
+  }
+
+  // See printers.html for why this exists rather than window.prompt()/alert(): Chrome
+  // suppresses further native dialogs on a page after a couple fire in succession, and
+  // once suppressed, prompt() silently returns null with zero visible sign anything
+  // happened. This in-page dialog cannot be suppressed the same way.
+  function askReason(title) {
+    return new Promise((resolve) => {
+      const dialog = document.getElementById('reasonDialog');
+      const input = document.getElementById('reasonInput');
+      const err = document.getElementById('reasonErr');
+      const submit = document.getElementById('reasonSubmit');
+      const cancel = document.getElementById('reasonCancel');
+
+      document.getElementById('reasonTitle').textContent = title;
+      input.value = '';
+      err.textContent = '';
+      dialog.showModal();
+      input.focus();
+
+      function done(value) {
+        submit.removeEventListener('click', onSubmit);
+        cancel.removeEventListener('click', onCancel);
+        dialog.removeEventListener('cancel', onCancel);
+        dialog.close();
+        resolve(value);
+      }
+      function onSubmit() {
+        const value = input.value.trim();
+        if (!value) { err.textContent = 'A reason is required.'; return; }
+        done(value);
+      }
+      function onCancel() { done(null); }
+
+      submit.addEventListener('click', onSubmit);
+      cancel.addEventListener('click', onCancel);
+      dialog.addEventListener('cancel', onCancel, { once: true });
+    });
+  }
+
+  async function call(url, method, body) {
+    let response;
+    try {
+      response = await fetch(url, {
+        method: method,
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined
+      });
+    } catch (err) {
+      console.error('[janus-print] fetch failed', err);
+      return { ok: false, detail: `Request failed before reaching the server: ${err.message}` };
+    }
+    if (!response.ok) {
+      let detail = response.statusText;
+      try { detail = (await response.json()).detail || detail; } catch (e) { }
+      return { ok: false, detail: typeof detail === 'string' ? detail : JSON.stringify(detail) };
+    }
+    return { ok: true, body: await response.json() };
+  }
+
+  function renderKindFields() {
+    const kind = document.getElementById('nv_kind').value;
+    const container = document.getElementById('kindFields');
+    if (kind === 'weighted_mod') {
+      container.innerHTML = `
+        <div class="row" style="gap:12px">
+          <div style="flex:2">
+            <label for="kf_weights">Weights (comma separated, cycles across digits)</label>
+            <input id="kf_weights" type="text" placeholder="10,9,8,7,6,5,4,3,2">
+          </div>
+          <div style="flex:1"><label for="kf_modulus">Modulus</label><input id="kf_modulus" type="number" value="11"></div>
+          <div style="flex:1"><label for="kf_check_digits">Check digits</label><input id="kf_check_digits" type="number" value="1"></div>
+        </div>
+        <div class="row" style="gap:12px">
+          <div style="flex:1"><label for="kf_length">Exact length (optional)</label><input id="kf_length" type="number"></div>
+          <div style="flex:1"><label for="kf_reject">Reject remainders (optional, comma separated)</label><input id="kf_reject" type="text" placeholder="10"></div>
+        </div>
+        <label><input id="kf_complement" type="checkbox" style="width:auto" checked> Complement (expected = modulus − remainder)</label>
+        <label><input id="kf_double" type="checkbox" style="width:auto"> Luhn-style digit doubling</label>
+      `;
+    } else if (kind === 'entropy') {
+      container.innerHTML = `
+        <div class="row" style="gap:12px">
+          <div style="flex:1"><label for="kf_min_length">Minimum length</label><input id="kf_min_length" type="number" value="16"></div>
+          <div style="flex:1"><label for="kf_min_bits">Minimum bits</label><input id="kf_min_bits" type="number" step="0.1" value="3.0"></div>
+        </div>
+      `;
+    } else {
+      container.innerHTML = '';
+    }
+  }
+
+  function collectParams() {
+    const kind = document.getElementById('nv_kind').value;
+    if (kind === 'weighted_mod') {
+      const weights = document.getElementById('kf_weights').value
+        .split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+      const reject = document.getElementById('kf_reject').value
+        .split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+      const length = document.getElementById('kf_length').value;
+      const params = {
+        weights: weights,
+        modulus: parseInt(document.getElementById('kf_modulus').value, 10) || 10,
+        check_digits: parseInt(document.getElementById('kf_check_digits').value, 10) || 1,
+        complement: document.getElementById('kf_complement').checked,
+        double_and_sum: document.getElementById('kf_double').checked,
+      };
+      if (length) params.length = parseInt(length, 10);
+      if (reject.length) params.reject_remainders = reject;
+      return params;
+    }
+    if (kind === 'entropy') {
+      return {
+        min_length: parseInt(document.getElementById('kf_min_length').value, 10) || 16,
+        min_bits: parseFloat(document.getElementById('kf_min_bits').value) || 3.0,
+      };
+    }
+    return {};
+  }
+
+  function lines(id) {
+    return document.getElementById(id).value.split('\n').map(s => s.trim()).filter(Boolean);
+  }
+
+  async function tryValidator() {
+    const out = document.getElementById('tryOut');
+    const sample = document.getElementById('nv_sample').value;
+    if (!sample.trim()) { out.textContent = 'Enter a sample first.'; return; }
+    const result = await call('/api/v1/validators/try', 'POST', {
+      kind: document.getElementById('nv_kind').value,
+      params: collectParams(),
+      sample: sample
+    });
+    if (!result.ok) { out.textContent = 'Error: ' + result.detail; return; }
+    out.textContent = result.body.passes ? 'PASSES' : 'fails';
+  }
+
+  async function addValidator() {
+    const error = document.getElementById('addErr');
+    error.textContent = '';
+    setStatus('Adding validator...');
+    const note = await askReason('Reason for adding this validator');
+    if (note === null) { setStatus('Cancelled.'); return; }
+
+    const result = await call('/api/v1/validators', 'POST', {
+      id: document.getElementById('nv_id').value.trim(),
+      name: document.getElementById('nv_name').value.trim(),
+      description: document.getElementById('nv_description').value.trim(),
+      kind: document.getElementById('nv_kind').value,
+      params: collectParams(),
+      fixtures: { pass: lines('nv_pass'), fail: lines('nv_fail') },
+      note: note
+    });
+    if (!result.ok) { error.textContent = result.detail; setStatus('Failed: ' + result.detail, true); return; }
+    setStatus('Added. Reloading...');
+    location.reload();
+  }
+
+  async function toggleValidator(id, enable) {
+    const note = await askReason((enable ? 'Enabling' : 'Disabling') + ' — reason');
+    if (note === null) { setStatus('Cancelled.'); return; }
+    setStatus(`Updating ${id}...`);
+    const result = await call(`/api/v1/validators/${id}`, 'PATCH', { enabled: enable === true || enable === 'true', note: note });
+    if (!result.ok) { setStatus(`Failed: ${result.detail}`, true); return; }
+    setStatus(`Updated ${id}. Reloading...`);
+    location.reload();
+  }
+
+  async function removeValidator(id) {
+    const note = await askReason(`Removing ${id} — reason`);
+    if (note === null) { setStatus('Cancelled.'); return; }
+    setStatus(`Removing ${id}...`);
+    const result = await call(`/api/v1/validators/${id}?note=${encodeURIComponent(note)}`, 'DELETE');
+    if (!result.ok) { setStatus(`Failed to remove ${id}: ${result.detail}`, true); return; }
+    setStatus(`Removed ${id}. Reloading...`);
+    location.reload();
+  }
+
+  renderKindFields();
+</script>
+{% endblock %}

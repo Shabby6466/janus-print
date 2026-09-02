@@ -100,6 +100,19 @@
 </div>
 {% endif %}
 
+<div id="opStatus" class="note" style="min-height:1.2em;margin-bottom:8px"></div>
+
+<dialog id="reasonDialog" class="panel" style="max-width:520px;border:1px solid var(--line)">
+  <h3 id="reasonTitle" style="margin-top:0">Reason for this change</h3>
+  <p class="note">Recorded permanently against this queue.</p>
+  <input id="reasonInput" type="text" style="width:100%">
+  <div id="reasonErr" class="err"></div>
+  <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+    <button class="btn" id="reasonCancel">Cancel</button>
+    <button class="btn primary" id="reasonSubmit">OK</button>
+  </div>
+</dialog>
+
 <div class="table-wrap">
   <table>
     <thead>
@@ -174,12 +187,69 @@
 </div>
 
 <script>
-  async function call(url, method, body) {
-    const response = await fetch(url, {
-      method: method,
-      headers: { 'Content-Type': 'application/json' },
-      body: body ? JSON.stringify(body) : undefined
+  function setStatus(text, isError) {
+    const el = document.getElementById('opStatus');
+    el.textContent = text;
+    el.style.color = isError ? '#e09a83' : '';
+    console.log('[janus-print]', text);
+  }
+
+  // window.prompt()/alert() are native browser dialogs. After a couple of them fire in
+  // quick succession, Chrome offers "Prevent this page from creating additional dialogs" —
+  // and once a user checks that, every later prompt() silently returns null with zero
+  // visible sign anything happened. Given how much back-and-forth this cost to diagnose,
+  // every reason-for-change flow on this page now uses this in-page dialog instead, which
+  // cannot be suppressed the same way and which always shows a status line either way.
+  function askReason(title) {
+    return new Promise((resolve) => {
+      const dialog = document.getElementById('reasonDialog');
+      const input = document.getElementById('reasonInput');
+      const err = document.getElementById('reasonErr');
+      const submit = document.getElementById('reasonSubmit');
+      const cancel = document.getElementById('reasonCancel');
+
+      document.getElementById('reasonTitle').textContent = title;
+      input.value = '';
+      err.textContent = '';
+      dialog.showModal();
+      input.focus();
+
+      function done(value) {
+        submit.removeEventListener('click', onSubmit);
+        cancel.removeEventListener('click', onCancel);
+        dialog.removeEventListener('cancel', onCancel);
+        dialog.close();
+        resolve(value);
+      }
+      function onSubmit() {
+        const value = input.value.trim();
+        if (!value) { err.textContent = 'A reason is required.'; return; }
+        done(value);
+      }
+      function onCancel() { done(null); }
+
+      submit.addEventListener('click', onSubmit);
+      cancel.addEventListener('click', onCancel);
+      dialog.addEventListener('cancel', onCancel, { once: true });
     });
+  }
+
+  async function call(url, method, body) {
+    let response;
+    try {
+      response = await fetch(url, {
+        method: method,
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined
+      });
+    } catch (err) {
+      // fetch() itself threw — a network failure, a blocked request (extension/CSP), or
+      // similar. Without this catch the error was an unhandled promise rejection: visible
+      // only in the console, invisible everywhere else, indistinguishable from nothing
+      // having happened at all.
+      console.error('[janus-print] fetch failed', err);
+      return { ok: false, detail: `Request failed before reaching the server: ${err.message}` };
+    }
     if (!response.ok) {
       let detail = response.statusText;
       try { detail = (await response.json()).detail || detail; } catch (e) { }
@@ -191,6 +261,7 @@
   async function addPrinter() {
     const error = document.getElementById('addErr');
     error.textContent = '';
+    setStatus('Adding printer...');
     const mode = document.querySelector('input[name="np_mode"]:checked').value;
     const result = await call('/api/v1/printers', 'POST', {
       name: document.getElementById('np_name').value.trim(),
@@ -202,29 +273,39 @@
       shared: document.getElementById('np_shared').checked,
       note: document.getElementById('np_note').value.trim()
     });
-    if (!result.ok) { error.textContent = result.detail; return; }
+    if (!result.ok) { error.textContent = result.detail; setStatus('Failed: ' + result.detail, true); return; }
     if (result.body.cups_state === 'error') {
-      alert('Queue recorded, but CUPS refused it:\n\n' + result.body.cups_error);
+      setStatus('Queue recorded, but CUPS refused it: ' + result.body.cups_error, true);
+    } else {
+      setStatus('Added. Reloading...');
     }
     location.reload();
   }
 
   async function patch(name, fields) {
+    console.log('[janus-print] patch()', name, fields);
     if (!fields.note) {
-      const note = prompt('Reason for this change (recorded permanently):');
-      if (note === null) return;
+      const note = await askReason('Reason for this change');
+      if (note === null) { setStatus('Cancelled.'); return; }
       fields = Object.assign({}, fields, { note: note });
     }
+    setStatus(`Updating ${name}...`);
     const result = await call(`/api/v1/printers/${name}`, 'PATCH', fields);
-    if (!result.ok) { alert(result.detail); return; }
+    if (!result.ok) { setStatus(`Failed to update ${name}: ${result.detail}`, true); return; }
+    setStatus(`Updated ${name}. Reloading...`);
     location.reload();
   }
 
   async function testConnection(name) {
     const out = document.getElementById('diag-' + name);
     out.textContent = 'checking...';
+    setStatus(`Testing connection to ${name}...`);
     const result = await call(`/api/v1/printers/${name}/test-connection`, 'POST');
-    if (!result.ok) { out.innerHTML = `<span class="pill bad">error</span> ${result.detail}`; return; }
+    if (!result.ok) {
+      out.innerHTML = `<span class="pill bad">error</span> ${result.detail}`;
+      setStatus(`Test failed: ${result.detail}`, true);
+      return;
+    }
 
     const body = result.body;
     const device = body.device_reachable === true
@@ -236,23 +317,32 @@
       ? `<span class="pill ${body.cups.state === 'idle' ? 'ok' : 'warn'}">cups: ${body.cups.state}</span>`
       : '';
     out.innerHTML = device + ' ' + cups;
+    setStatus(`Test complete for ${name}.`);
   }
 
   async function testPage(name) {
-    const note = prompt(`Send a test page to ${name}? It is inspected like any other job.\n\nOptional note:`);
-    if (note === null) return;
+    const note = await askReason(`Send a test page to ${name}? (optional note)`);
+    if (note === null) { setStatus('Cancelled.'); return; }
     const out = document.getElementById('diag-' + name);
     out.textContent = 'submitting...';
+    setStatus(`Submitting a test page to ${name}...`);
     const result = await call(`/api/v1/printers/${name}/test-page`, 'POST', { note: note });
-    if (!result.ok) { out.innerHTML = `<span class="pill bad">failed</span> ${result.detail}`; return; }
+    if (!result.ok) {
+      out.innerHTML = `<span class="pill bad">failed</span> ${result.detail}`;
+      setStatus(`Test page failed: ${result.detail}`, true);
+      return;
+    }
     out.innerHTML = `<span class="pill ok">submitted</span> ${result.body.cups_request_id || ''} — check the printer, and <a href="/queue?state=all">the queue</a>`;
+    setStatus(`Test page submitted to ${name}.`);
   }
 
   async function removePrinter(name) {
-    const note = prompt(`Removing ${name}. Reason (recorded permanently):`);
-    if (note === null) return;
+    const note = await askReason(`Removing ${name} — reason`);
+    if (note === null) { setStatus('Cancelled.'); return; }
+    setStatus(`Removing ${name}...`);
     const result = await call(`/api/v1/printers/${name}?note=${encodeURIComponent(note)}`, 'DELETE');
-    if (!result.ok) { alert(result.detail); return; }
+    if (!result.ok) { setStatus(`Failed to remove ${name}: ${result.detail}`, true); return; }
+    setStatus(`Removed ${name}. Reloading...`);
     location.reload();
   }
 </script>

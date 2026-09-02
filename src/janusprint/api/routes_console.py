@@ -17,7 +17,7 @@ from .. import printers as printer_store
 from ..db import get_session
 from ..inspector import store as rule_store
 from ..inspector.engine import get_ruleset
-from ..inspector.validators import VALIDATORS
+from ..inspector.validators import known_names as known_validator_names
 from ..models import (
     ArchiveAccess,
     ContentRequest,
@@ -266,7 +266,7 @@ def rule_new(request: Request, user: User | None = Depends(current_user_optional
     if user.role != "admin":
         return _render(request, "notfound.html", user, what="that page (admin only)")
     return _render(
-        request, "rule_edit.html", user, rule={}, creating=True, validators=sorted(VALIDATORS)
+        request, "rule_edit.html", user, rule={}, creating=True, validators=known_validator_names()
     )
 
 
@@ -308,7 +308,7 @@ def rule_edit(
         user,
         rule=_rule_dict(row),
         creating=False,
-        validators=sorted(VALIDATORS),
+        validators=known_validator_names(),
     )
 
 
@@ -385,6 +385,63 @@ def printers_view(
         printers=printers,
         cups=cups_control.describe(),
         reconcile=printer_store.reconcile(session),
+    )
+
+
+@router.get("/validators")
+def validators_view(
+    request: Request,
+    session: Session = Depends(get_session),
+    user: User | None = Depends(current_user_optional),
+):
+    if user is None:
+        return _login_redirect("/validators")
+    from ..inspector.validators import KIND_DOCS
+    from ..models import ValidatorRow
+
+    rows = session.scalars(
+        select(ValidatorRow).order_by(ValidatorRow.builtin.desc(), ValidatorRow.id)
+    ).all()
+    return _render(
+        request,
+        "validators.html",
+        user,
+        validators=[
+            {
+                "id": r.id,
+                "name": r.name,
+                "description": r.description,
+                "kind": r.kind,
+                "params": r.params,
+                "fixtures": r.fixtures,
+                "builtin": r.builtin,
+                "enabled": r.enabled,
+                "updated_at": r.updated_at,
+                "updated_by": r.updated_by,
+            }
+            for r in rows
+        ],
+        kinds=KIND_DOCS,
+    )
+
+
+@router.get("/validators/history")
+def validator_history(
+    request: Request,
+    validator_id: str | None = None,
+    session: Session = Depends(get_session),
+    user: User | None = Depends(current_user_optional),
+):
+    if user is None:
+        return _login_redirect("/validators/history")
+    from .. import validator_store
+
+    return _render(
+        request,
+        "validator_history.html",
+        user,
+        validator_id=validator_id,
+        revisions=validator_store.revisions(session, validator_id, 300),
     )
 
 
