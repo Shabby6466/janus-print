@@ -109,7 +109,7 @@ export function JobDetail() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24 text-slate-400 font-mono text-sm">
+      <div className="flex items-center justify-center py-24 text-slate-400 font-mono text-base">
         Loading job #{id}...
       </div>
     );
@@ -117,20 +117,20 @@ export function JobDetail() {
 
   if (error || !job) {
     return (
-      <div className="p-6 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm">
+      <div className="p-6 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm">
         {error || 'Job not found'}
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
+    <div className="space-y-8 animate-in fade-in duration-300">
       
       {/* Back Button & Header */}
       <div>
         <button
           onClick={() => navigate('/queue')}
-          className="inline-flex items-center space-x-1.5 text-xs text-slate-400 hover:text-white transition-colors mb-3"
+          className="inline-flex items-center space-x-2 text-sm text-slate-400 hover:text-white transition-colors mb-3"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Back to Queue</span>
@@ -138,24 +138,24 @@ export function JobDetail() {
 
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <div className="flex items-center space-x-3">
-              <h1 className="text-xl font-bold text-white tracking-tight">{job.title || '(untitled)'}</h1>
+            <div className="flex items-center space-x-3.5">
+              <h1 className="text-2xl font-bold text-white tracking-tight">{job.title || '(untitled)'}</h1>
               <StateBadge state={job.state} />
             </div>
-            <p className="text-xs text-slate-400 mt-1">
-              Printed by <span className="text-slate-200 font-medium">{job.username}</span> on{' '}
-              <span className="text-slate-200 font-medium">{job.queue}</span> &middot;{' '}
+            <p className="text-sm text-slate-400 mt-1">
+              Printed by <span className="text-slate-200 font-semibold">{job.username}</span> on{' '}
+              <span className="text-slate-200 font-semibold">{job.queue}</span> &middot;{' '}
               {job.created_at ? new Date(job.created_at).toLocaleString() : '-'}
             </p>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-3">
             <Link
               to={`/jobs/${job.id}/view`}
-              className="px-3.5 py-1.5 rounded-lg bg-surface-850 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center space-x-1.5 transition-colors"
+              className="px-4 py-2 rounded-xl bg-surface-850 hover:bg-slate-700 text-slate-200 border border-slate-700 text-sm font-semibold flex items-center space-x-2 transition-colors shadow-sm"
             >
-              <Eye className="w-3.5 h-3.5 text-indigo-400" />
+              <Eye className="w-4 h-4 text-indigo-400" />
               <span>View Pages</span>
             </Link>
 
@@ -163,16 +163,16 @@ export function JobDetail() {
               <>
                 <button
                   onClick={() => { setDecisionVerb('release'); setReason(''); setDecisionModal(true); }}
-                  className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 flex items-center space-x-1.5 transition-all"
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-lg shadow-indigo-600/30 flex items-center space-x-2 transition-all"
                 >
-                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <ShieldCheck className="w-4 h-4" />
                   <span>Release to Printer</span>
                 </button>
                 <button
                   onClick={() => { setDecisionVerb('deny'); setReason(''); setDecisionModal(true); }}
-                  className="px-3.5 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 border border-rose-500/30 text-xs font-semibold flex items-center space-x-1.5 transition-colors"
+                  className="px-4 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 border border-rose-500/30 text-sm font-semibold flex items-center space-x-2 transition-colors"
                 >
-                  <ShieldX className="w-3.5 h-3.5" />
+                  <ShieldX className="w-4 h-4" />
                   <span>Deny & Cancel</span>
                 </button>
               </>
@@ -185,69 +185,69 @@ export function JobDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
         {/* Verdict Card */}
-        <div className="glass-card rounded-xl p-5 border border-slate-800 space-y-4">
-          <h3 className="text-sm font-semibold text-white flex items-center space-x-2 border-b border-slate-800/80 pb-3">
-            <Cpu className="w-4 h-4 text-indigo-400" />
+        <div className="glass-card rounded-2xl p-6 border border-slate-800 space-y-4 shadow-md">
+          <h3 className="text-base font-semibold text-white flex items-center space-x-2.5 border-b border-slate-800/80 pb-3.5">
+            <Cpu className="w-5 h-5 text-indigo-400" />
             <span>Inspection Verdict</span>
           </h3>
 
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
             <div>
               <dt className="text-slate-400 font-medium">Action</dt>
-              <dd className="text-white font-mono uppercase font-bold mt-0.5">{job.action}</dd>
+              <dd className="text-white font-mono uppercase font-bold text-base mt-1">{job.action}</dd>
             </div>
             <div>
               <dt className="text-slate-400 font-medium">Confidence Score</dt>
-              <dd className="text-white font-mono font-bold mt-0.5">{job.score?.toFixed(2) || '0.00'}</dd>
+              <dd className="text-white font-mono font-bold text-base mt-1">{job.score?.toFixed(2) || '0.00'}</dd>
             </div>
             <div className="col-span-2">
               <dt className="text-slate-400 font-medium">Verdict Reason</dt>
-              <dd className="text-slate-200 mt-0.5">{job.verdict_reason || '-'}</dd>
+              <dd className="text-slate-200 mt-1 font-medium">{job.verdict_reason || '-'}</dd>
             </div>
             <div>
               <dt className="text-slate-400 font-medium">Scan Tier</dt>
-              <dd className="text-indigo-300 font-mono mt-0.5">{job.scan_tier}</dd>
+              <dd className="text-indigo-300 font-mono mt-1 font-semibold">{job.scan_tier}</dd>
             </div>
             <div>
               <dt className="text-slate-400 font-medium">Pages</dt>
-              <dd className="text-slate-200 font-mono mt-0.5">
+              <dd className="text-slate-200 font-mono mt-1">
                 {job.page_count} ({job.pages_without_text} graphical/thin)
               </dd>
             </div>
             <div>
               <dt className="text-slate-400 font-medium">Inline Latency</dt>
-              <dd className="text-slate-200 font-mono mt-0.5">{job.inline_ms} ms</dd>
+              <dd className="text-slate-200 font-mono mt-1">{job.inline_ms} ms</dd>
             </div>
           </dl>
         </div>
 
         {/* Job Metadata Card */}
-        <div className="glass-card rounded-xl p-5 border border-slate-800 space-y-4">
-          <h3 className="text-sm font-semibold text-white flex items-center space-x-2 border-b border-slate-800/80 pb-3">
-            <FileText className="w-4 h-4 text-indigo-400" />
+        <div className="glass-card rounded-2xl p-6 border border-slate-800 space-y-4 shadow-md">
+          <h3 className="text-base font-semibold text-white flex items-center space-x-2.5 border-b border-slate-800/80 pb-3.5">
+            <FileText className="w-5 h-5 text-indigo-400" />
             <span>Job Metadata</span>
           </h3>
 
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
             <div>
               <dt className="text-slate-400 font-medium">Job ID</dt>
-              <dd className="text-slate-300 font-mono text-[11px] truncate mt-0.5" title={job.id}>{job.id}</dd>
+              <dd className="text-slate-300 font-mono text-xs truncate mt-1" title={job.id}>{job.id}</dd>
             </div>
             <div>
               <dt className="text-slate-400 font-medium">CUPS Spool ID</dt>
-              <dd className="text-slate-200 font-mono mt-0.5">{job.queue}-{job.cups_job_id}</dd>
+              <dd className="text-slate-200 font-mono mt-1 font-semibold">{job.queue}-{job.cups_job_id}</dd>
             </div>
             <div>
               <dt className="text-slate-400 font-medium">Workstation Host</dt>
-              <dd className="text-slate-200 font-mono mt-0.5">{job.hostname || 'unknown'}</dd>
+              <dd className="text-slate-200 font-mono mt-1">{job.hostname || 'unknown'}</dd>
             </div>
             <div>
               <dt className="text-slate-400 font-medium">Copies</dt>
-              <dd className="text-slate-200 font-mono mt-0.5">{job.copies}</dd>
+              <dd className="text-slate-200 font-mono mt-1 font-semibold">{job.copies}</dd>
             </div>
             <div className="col-span-2">
               <dt className="text-slate-400 font-medium">SHA-256 Hash</dt>
-              <dd className="text-slate-400 font-mono text-[10px] break-all mt-0.5">{job.sha256}</dd>
+              <dd className="text-slate-400 font-mono text-xs break-all mt-1">{job.sha256}</dd>
             </div>
           </dl>
         </div>
@@ -255,39 +255,39 @@ export function JobDetail() {
       </div>
 
       {/* Matched DLP Rules */}
-      <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-white flex items-center space-x-2">
+      <div className="space-y-4">
+        <h3 className="text-base font-bold text-white flex items-center space-x-2">
           <span>DLP Rule Matches ({job.matches?.length || 0})</span>
         </h3>
 
         {job.matches?.length > 0 ? (
-          <div className="glass-card rounded-xl border border-slate-800 overflow-hidden">
+          <div className="glass-card rounded-2xl border border-slate-800 overflow-hidden shadow-lg">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-surface-850 text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-800">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-surface-850 text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-800 text-xs">
                   <tr>
-                    <th className="px-4 py-3">Rule Name & ID</th>
-                    <th className="px-4 py-3">Severity</th>
-                    <th className="px-4 py-3">Count</th>
-                    <th className="px-4 py-3">Score</th>
-                    <th className="px-4 py-3">Tier</th>
-                    <th className="px-4 py-3">Page</th>
-                    <th className="px-4 py-3">Masked Sample</th>
+                    <th className="px-5 py-3.5">Rule Name & ID</th>
+                    <th className="px-5 py-3.5">Severity</th>
+                    <th className="px-5 py-3.5">Count</th>
+                    <th className="px-5 py-3.5">Score</th>
+                    <th className="px-5 py-3.5">Tier</th>
+                    <th className="px-5 py-3.5">Page</th>
+                    <th className="px-5 py-3.5">Masked Sample</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-mono">
                   {job.matches.map((m, idx) => (
                     <tr key={idx} className="hover:bg-slate-800/30 transition-colors">
-                      <td className="px-4 py-3 font-sans">
-                        <div className="font-semibold text-white">{m.rule_name || m.rule_id}</div>
-                        <div className="text-[10px] text-slate-400 font-mono">{m.rule_id}</div>
+                      <td className="px-5 py-4 font-sans">
+                        <div className="font-bold text-white text-base">{m.rule_name || m.rule_id}</div>
+                        <div className="text-xs text-slate-400 font-mono mt-0.5">{m.rule_id}</div>
                       </td>
-                      <td className="px-4 py-3 text-slate-300">{m.severity}</td>
-                      <td className="px-4 py-3 text-slate-300">{m.count}</td>
-                      <td className="px-4 py-3 text-slate-200">{m.score?.toFixed(2)}</td>
-                      <td className="px-4 py-3 text-indigo-400">{m.tier}</td>
-                      <td className="px-4 py-3 text-slate-300">{m.page}</td>
-                      <td className="px-4 py-3 text-slate-400 text-xs tracking-wider font-bold">
+                      <td className="px-5 py-4 text-slate-300 font-bold">{m.severity}</td>
+                      <td className="px-5 py-4 text-slate-300">{m.count}</td>
+                      <td className="px-5 py-4 text-slate-200 font-bold">{m.score?.toFixed(2)}</td>
+                      <td className="px-5 py-4 text-indigo-400 font-semibold">{m.tier}</td>
+                      <td className="px-5 py-4 text-slate-300">{m.page}</td>
+                      <td className="px-5 py-4 text-slate-300 text-sm tracking-widest font-bold">
                         {m.sample || '-'}
                       </td>
                     </tr>
@@ -297,21 +297,21 @@ export function JobDetail() {
             </div>
           </div>
         ) : (
-          <div className="glass-card rounded-xl p-4 border border-slate-800 text-xs text-slate-500">
+          <div className="glass-card rounded-2xl p-6 border border-slate-800 text-sm text-slate-500">
             No rule matches recorded for this print job.
           </div>
         )}
       </div>
 
       {/* Archived Document & Dual Approval Panel */}
-      <div className="glass-card rounded-xl p-5 border border-slate-800 space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+      <div className="glass-card rounded-2xl p-6 border border-slate-800 space-y-5 shadow-md">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-800/80 pb-4">
           <div>
-            <h3 className="text-sm font-semibold text-white flex items-center space-x-2">
-              <Lock className="w-4 h-4 text-amber-400" />
+            <h3 className="text-base font-bold text-white flex items-center space-x-2.5">
+              <Lock className="w-5 h-5 text-amber-400" />
               <span>Encrypted Document Archive & Dual-Approval Gate</span>
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-sm text-slate-400 mt-1">
               Reading or downloading unmasked document contents requires justification and a second approver.
             </p>
           </div>
@@ -319,7 +319,7 @@ export function JobDetail() {
           {hasRole('analyst') && (
             <button
               onClick={() => { setRequestReason(''); setRequestModal(true); }}
-              className="px-3 py-1.5 rounded-lg bg-surface-850 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition-colors"
+              className="px-4 py-2 rounded-xl bg-surface-850 hover:bg-slate-700 text-slate-200 border border-slate-700 text-sm font-semibold transition-colors self-start sm:self-auto shadow-sm"
             >
               Request Access
             </button>
@@ -328,24 +328,24 @@ export function JobDetail() {
 
         {/* Pending / Active Content Requests */}
         {job.content_requests?.length > 0 && (
-          <div className="space-y-2">
-            <h4 className="text-xs font-semibold text-slate-300">Access Requests</h4>
-            <div className="divide-y divide-slate-800 border border-slate-800 rounded-lg overflow-hidden">
+          <div className="space-y-3">
+            <h4 className="text-sm font-semibold text-slate-300">Access Requests</h4>
+            <div className="divide-y divide-slate-800 border border-slate-800 rounded-xl overflow-hidden">
               {job.content_requests.map((cr) => (
-                <div key={cr.id} className="p-3 bg-surface-850 flex items-center justify-between text-xs">
+                <div key={cr.id} className="p-4 bg-surface-850 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-sm">
                   <div>
-                    <span className="font-semibold text-white">{cr.requested_by}</span>: {cr.reason}
-                    <div className="text-[10px] text-slate-400 mt-0.5">
-                      Status: <span className="font-semibold text-amber-400">{cr.state}</span> &middot; Requested {new Date(cr.requested_at).toLocaleString()}
+                    <span className="font-bold text-white">{cr.requested_by}</span>: {cr.reason}
+                    <div className="text-xs text-slate-400 mt-1">
+                      Status: <span className="font-bold text-amber-400 uppercase">{cr.state}</span> &middot; Requested {new Date(cr.requested_at).toLocaleString()}
                     </div>
                   </div>
 
                   {cr.state === 'pending' && hasRole('approver') && cr.requested_by !== user.username && (
                     <button
                       onClick={() => handleApproveContent(cr.id)}
-                      className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-semibold flex items-center space-x-1"
+                      className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center space-x-1.5 self-start sm:self-auto"
                     >
-                      <UserCheck className="w-3.5 h-3.5" />
+                      <UserCheck className="w-4 h-4" />
                       <span>Approve Request</span>
                     </button>
                   )}
@@ -357,20 +357,20 @@ export function JobDetail() {
       </div>
 
       {/* History Timeline */}
-      <div className="glass-card rounded-xl p-5 border border-slate-800 space-y-4">
-        <h3 className="text-sm font-semibold text-white flex items-center space-x-2 border-b border-slate-800/80 pb-3">
-          <Clock className="w-4 h-4 text-indigo-400" />
+      <div className="glass-card rounded-2xl p-6 border border-slate-800 space-y-4 shadow-md">
+        <h3 className="text-base font-bold text-white flex items-center space-x-2.5 border-b border-slate-800/80 pb-3.5">
+          <Clock className="w-5 h-5 text-indigo-400" />
           <span>Audit Event Timeline</span>
         </h3>
 
-        <div className="space-y-3 font-mono text-xs">
+        <div className="space-y-3 font-mono text-sm">
           {job.events?.map((ev, idx) => (
             <div key={idx} className="flex items-start space-x-3 text-slate-300">
-              <span className="text-slate-400 text-[11px] whitespace-nowrap">
+              <span className="text-slate-400 text-xs whitespace-nowrap">
                 {ev.at ? new Date(ev.at).toLocaleTimeString() : '-'}
               </span>
               <span className="font-bold text-indigo-300">{ev.event}</span>
-              <span className="text-slate-400">by {ev.actor}: {ev.detail || '-'}</span>
+              <span className="text-slate-400 font-sans">by <strong className="text-slate-200">{ev.actor}</strong>: {ev.detail || '-'}</span>
             </div>
           ))}
         </div>
@@ -381,37 +381,38 @@ export function JobDetail() {
         isOpen={decisionModal}
         onClose={() => setDecisionModal(false)}
         title={decisionVerb === 'release' ? 'Release Print Job' : 'Deny & Cancel Print Job'}
+        maxWidth="max-w-xl"
       >
-        <div className="space-y-4">
-          <p className="text-xs text-slate-300">
+        <div className="space-y-4 text-sm">
+          <p className="text-slate-300">
             {decisionVerb === 'release'
               ? 'This will immediately release the document to the physical printer. Provide an audit justification.'
               : 'This will destroy the print spooler file permanently. Provide a reason for this denial.'}
           </p>
           
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Reason</label>
+            <label className="block font-medium text-slate-400 mb-1.5">Reason</label>
             <input
               type="text"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="e.g., Verified false positive, authorized executive export"
-              className="w-full px-3 py-2 bg-surface-850 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-3.5 py-2.5 bg-surface-850 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               autoFocus
             />
           </div>
 
-          <div className="flex justify-end space-x-2 pt-2">
+          <div className="flex justify-end space-x-3 pt-3">
             <button
               onClick={() => setDecisionModal(false)}
-              className="px-4 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              className="px-4 py-2.5 rounded-xl font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handleDecision}
               disabled={actionLoading}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold text-white shadow-lg transition-all ${
+              className={`px-5 py-2.5 rounded-xl font-semibold text-white shadow-lg transition-all text-sm ${
                 decisionVerb === 'release'
                   ? 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/30'
                   : 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/30'
@@ -428,35 +429,36 @@ export function JobDetail() {
         isOpen={requestModal}
         onClose={() => setRequestModal(false)}
         title="Request Document Archive Access"
+        maxWidth="max-w-xl"
       >
-        <div className="space-y-4">
-          <p className="text-xs text-slate-300">
+        <div className="space-y-4 text-sm">
+          <p className="text-slate-300">
             To prevent unauthorized viewing of sensitive files, document content access requires justification and approval by a second authorized user.
           </p>
           
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Business Justification</label>
+            <label className="block font-medium text-slate-400 mb-1.5">Business Justification</label>
             <textarea
               rows={3}
               value={requestReason}
               onChange={(e) => setRequestReason(e.target.value)}
               placeholder="e.g., Incident investigation INC-8821, investigating suspected data exfiltration"
-              className="w-full px-3 py-2 bg-surface-850 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-3.5 py-2.5 bg-surface-850 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               autoFocus
             />
           </div>
 
-          <div className="flex justify-end space-x-2 pt-2">
+          <div className="flex justify-end space-x-3 pt-3">
             <button
               onClick={() => setRequestModal(false)}
-              className="px-4 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              className="px-4 py-2.5 rounded-xl font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handleContentRequest}
               disabled={actionLoading}
-              className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 transition-all"
+              className="px-5 py-2.5 rounded-xl font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 transition-all text-sm"
             >
               {actionLoading ? 'Submitting...' : 'Submit Access Request'}
             </button>

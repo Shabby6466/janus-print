@@ -120,33 +120,33 @@ export function Printers() {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
+    <div className="space-y-8 animate-in fade-in duration-300">
       
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-white tracking-tight">CUPS Printer Queues</h1>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <h1 className="text-2xl font-bold text-white tracking-tight">CUPS Printer Queues</h1>
+          <p className="text-sm text-slate-400 mt-1">
             Manage interception policies, scan modes, and fail-safe behaviors across office printers
           </p>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-3">
           {hasRole('admin') && (
             <button
               onClick={() => setAddModal(true)}
-              className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 flex items-center space-x-1.5 transition-all"
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-lg shadow-indigo-600/30 flex items-center space-x-2 transition-all"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="w-4 h-4" />
               <span>Add Printer Queue</span>
             </button>
           )}
 
           <button
             onClick={fetchPrinters}
-            className="px-3 py-1.5 rounded-lg bg-surface-850 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium flex items-center space-x-1.5 transition-colors"
+            className="px-4 py-2 rounded-xl bg-surface-850 hover:bg-slate-700 text-slate-300 border border-slate-700 text-sm font-medium flex items-center space-x-2 transition-colors"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
+            <RefreshCw className="w-4 h-4" />
             <span>Refresh</span>
           </button>
         </div>
@@ -157,24 +157,24 @@ export function Printers() {
         {printers.map((p) => {
           const isManaged = Boolean(p.managed !== false && p.device_uri);
           return (
-            <div key={p.name} className="glass-card rounded-xl p-5 border border-slate-800 space-y-4 flex flex-col justify-between">
+            <div key={p.name} className="glass-card rounded-2xl p-6 border border-slate-800 space-y-5 flex flex-col justify-between shadow-lg">
               
               {/* Card Header */}
               <div>
                 <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-2.5">
-                    <div className="p-2 rounded-lg bg-indigo-600/15 border border-indigo-500/30 text-indigo-400">
-                      <Printer className="w-5 h-5" />
+                  <div className="flex items-center space-x-3.5">
+                    <div className="p-2.5 rounded-xl bg-indigo-600/15 border border-indigo-500/30 text-indigo-400">
+                      <Printer className="w-6 h-6" />
                     </div>
                     <div>
-                      <h3 className="text-base font-bold text-white tracking-tight">{p.name}</h3>
-                      <div className="text-[11px] font-mono text-slate-400 truncate max-w-[200px]" title={p.device_uri}>
+                      <h3 className="text-lg font-bold text-white tracking-tight">{p.name}</h3>
+                      <div className="text-xs font-mono text-slate-400 truncate max-w-[220px]" title={p.device_uri}>
                         {p.device_uri || 'No backend URI'}
                       </div>
                     </div>
                   </div>
 
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
                     isManaged
                       ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
                       : 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
@@ -185,7 +185,7 @@ export function Printers() {
 
                 {/* Settings list */}
                 {isManaged ? (
-                  <dl className="mt-4 space-y-2.5 text-xs">
+                  <dl className="mt-5 space-y-3.5 text-sm">
                     <div className="flex items-center justify-between">
                       <dt className="text-slate-400 font-medium">Scan Mode</dt>
                       <dd>
@@ -193,7 +193,7 @@ export function Printers() {
                           disabled={!hasRole('admin')}
                           value={p.mode || (p.deep_scan_required ? 'enforce' : 'monitor')}
                           onChange={(e) => handleModeChange(p, e.target.value)}
-                          className="px-2 py-1 bg-surface-850 border border-slate-700 rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold disabled:opacity-50"
+                          className="px-3 py-1.5 bg-surface-850 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold disabled:opacity-50 cursor-pointer"
                         >
                           <option value="enforce">Enforce (Strict Hold)</option>
                           <option value="monitor">Monitor (Log Only)</option>
@@ -209,7 +209,7 @@ export function Printers() {
                           disabled={!hasRole('admin')}
                           value={p.fail_mode || 'open'}
                           onChange={(e) => handleFailModeChange(p, e.target.value)}
-                          className="px-2 py-1 bg-surface-850 border border-slate-700 rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono disabled:opacity-50"
+                          className="px-3 py-1.5 bg-surface-850 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono disabled:opacity-50 cursor-pointer"
                         >
                           <option value="open">open (Print on outage)</option>
                           <option value="closed">closed (Hold on outage)</option>
@@ -224,18 +224,18 @@ export function Printers() {
 
                     <div className="flex items-center justify-between">
                       <dt className="text-slate-400 font-medium">Deep Scan Required</dt>
-                      <dd className={`font-mono font-bold ${p.deep_scan_required ? 'text-emerald-400' : 'text-slate-500'}`}>
+                      <dd className={`font-mono font-bold text-sm ${p.deep_scan_required ? 'text-emerald-400' : 'text-slate-500'}`}>
                         {p.deep_scan_required ? 'YES' : 'NO'}
                       </dd>
                     </div>
                   </dl>
                 ) : (
-                  <div className="mt-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 space-y-2">
-                    <p>This queue exists in CUPS but is not managed under Janus DLP policy.</p>
+                  <div className="mt-5 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 space-y-3">
+                    <p className="text-sm">This queue exists in CUPS but is not managed under Janus DLP policy.</p>
                     {hasRole('admin') && (
                       <button
                         onClick={() => handleAdopt(p.name)}
-                        className="w-full py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white font-semibold transition-colors shadow-md"
+                        className="w-full py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-sm transition-colors shadow-md"
                       >
                         Adopt under Janus DLP
                       </button>
@@ -244,7 +244,7 @@ export function Printers() {
                 )}
               </div>
 
-              <div className="pt-3 border-t border-slate-800 text-[10px] text-slate-500 flex justify-between">
+              <div className="pt-4 border-t border-slate-800/80 text-xs text-slate-400 flex justify-between">
                 <span>Updated: {p.updated_at ? new Date(p.updated_at).toLocaleDateString() : 'initial'}</span>
                 <span>By: {p.updated_by || 'system'}</span>
               </div>
@@ -259,63 +259,64 @@ export function Printers() {
         isOpen={addModal}
         onClose={() => setAddModal(false)}
         title="Add New Printer Queue"
+        maxWidth="max-w-xl"
       >
-        <form onSubmit={handleAddPrinter} className="space-y-4 text-xs">
+        <form onSubmit={handleAddPrinter} className="space-y-4 text-sm">
           <div>
-            <label className="block text-slate-300 font-medium mb-1">Queue Name (e.g. office-laser, reliance)</label>
+            <label className="block text-slate-300 font-medium mb-1.5">Queue Name (e.g. office-laser, reliance)</label>
             <input
               type="text"
               value={newPrinter.name}
               onChange={(e) => setNewPrinter({ ...newPrinter, name: e.target.value })}
               placeholder="reliance"
-              className="w-full px-3 py-2 bg-surface-850 border border-slate-700 rounded-lg text-white font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-3.5 py-2.5 bg-surface-850 border border-slate-700 rounded-xl text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               required
             />
           </div>
 
           <div>
-            <label className="block text-slate-300 font-medium mb-1">Device URI (Physical printer address)</label>
+            <label className="block text-slate-300 font-medium mb-1.5">Device URI (Physical printer address)</label>
             <input
               type="text"
               value={newPrinter.device_uri}
               onChange={(e) => setNewPrinter({ ...newPrinter, device_uri: e.target.value })}
               placeholder="ipp://10.0.1.80/ipp/print or socket://10.0.1.80:9100"
-              className="w-full px-3 py-2 bg-surface-850 border border-slate-700 rounded-lg text-white font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-3.5 py-2.5 bg-surface-850 border border-slate-700 rounded-xl text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               required
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-slate-300 font-medium mb-1">Description</label>
+              <label className="block text-slate-300 font-medium mb-1.5">Description</label>
               <input
                 type="text"
                 value={newPrinter.description}
                 onChange={(e) => setNewPrinter({ ...newPrinter, description: e.target.value })}
                 placeholder="Executive Floor Color Laser"
-                className="w-full px-3 py-2 bg-surface-850 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3.5 py-2.5 bg-surface-850 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
 
             <div>
-              <label className="block text-slate-300 font-medium mb-1">Location</label>
+              <label className="block text-slate-300 font-medium mb-1.5">Location</label>
               <input
                 type="text"
                 value={newPrinter.location}
                 onChange={(e) => setNewPrinter({ ...newPrinter, location: e.target.value })}
                 placeholder="HQ Floor 3"
-                className="w-full px-3 py-2 bg-surface-850 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3.5 py-2.5 bg-surface-850 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-slate-300 font-medium mb-1">Scan Mode</label>
+              <label className="block text-slate-300 font-medium mb-1.5">Scan Mode</label>
               <select
                 value={newPrinter.mode}
                 onChange={(e) => setNewPrinter({ ...newPrinter, mode: e.target.value })}
-                className="w-full px-3 py-2 bg-surface-850 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3.5 py-2.5 bg-surface-850 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
               >
                 <option value="enforce">Enforce (Strict Hold)</option>
                 <option value="monitor">Monitor (Log Only)</option>
@@ -323,11 +324,11 @@ export function Printers() {
             </div>
 
             <div>
-              <label className="block text-slate-300 font-medium mb-1">Fail Mode</label>
+              <label className="block text-slate-300 font-medium mb-1.5">Fail Mode</label>
               <select
                 value={newPrinter.fail_mode}
                 onChange={(e) => setNewPrinter({ ...newPrinter, fail_mode: e.target.value })}
-                className="w-full px-3 py-2 bg-surface-850 border border-slate-700 rounded-lg text-white font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3.5 py-2.5 bg-surface-850 border border-slate-700 rounded-xl text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="open">open (Print on outage)</option>
                 <option value="closed">closed (Hold on outage)</option>
@@ -335,20 +336,20 @@ export function Printers() {
             </div>
           </div>
 
-          <div className="flex justify-end space-x-2 pt-2">
+          <div className="flex justify-end space-x-3 pt-4">
             <button
               type="button"
               onClick={() => setAddModal(false)}
-              className="px-4 py-2 rounded-lg font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              className="px-4 py-2.5 rounded-xl font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={actionLoading}
-              className="px-4 py-2 rounded-lg font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 transition-all"
+              className="px-5 py-2.5 rounded-xl font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 transition-all text-sm"
             >
-              {actionLoading ? 'Creating...' : 'Create Queue'}
+              {actionLoading ? 'Creating Queue...' : 'Create Queue'}
             </button>
           </div>
         </form>
@@ -359,35 +360,36 @@ export function Printers() {
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         title={`Change Policy for: ${selectedPrinter?.name}`}
+        maxWidth="max-w-xl"
       >
-        <div className="space-y-4">
-          <p className="text-xs text-slate-300">
+        <div className="space-y-4 text-sm">
+          <p className="text-slate-300">
             Printer policy modifications alter security enforcement for all connected workstations. Enter a permanent audit justification.
           </p>
 
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Reason for Policy Change</label>
+            <label className="block font-medium text-slate-400 mb-1.5">Reason for Policy Change</label>
             <input
               type="text"
               value={patchNote}
               onChange={(e) => setPatchNote(e.target.value)}
               placeholder="e.g., Switching to Enforce mode for strictly confidential compliance"
-              className="w-full px-3 py-2 bg-surface-850 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-3.5 py-2.5 bg-surface-850 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               autoFocus
             />
           </div>
 
-          <div className="flex justify-end space-x-2 pt-2">
+          <div className="flex justify-end space-x-3 pt-3">
             <button
               onClick={() => setModalOpen(false)}
-              className="px-4 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              className="px-4 py-2.5 rounded-xl font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={submitPatch}
               disabled={actionLoading}
-              className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 transition-all"
+              className="px-5 py-2.5 rounded-xl font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 transition-all text-sm"
             >
               {actionLoading ? 'Updating Policy...' : 'Apply Change'}
             </button>

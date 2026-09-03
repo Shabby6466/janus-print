@@ -18,7 +18,7 @@ export function StateBadge({ state, className = '' }) {
 
   return (
     <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${config.bg} ${className}`}
+      className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${config.bg} ${className}`}
     >
       {config.label}
     </span>
