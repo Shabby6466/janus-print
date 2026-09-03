@@ -50,8 +50,8 @@ class Settings(BaseSettings):
     printers_config: Path = REPO_ROOT / "config" / "printers.yaml"
 
     # Hard ceiling on inline (blocking) inspection. Past this the job is resolved by the
-    # queue's fail mode. Users notice anything above ~3s on a print.
-    inspect_deadline_seconds: float = 3.0
+    # queue's fail mode.
+    inspect_deadline_seconds: float = 15.0
     ocr_page_timeout_seconds: float = 20.0
     ocr_max_pages: int = 40
     # Page render scale for OCR, in multiples of 72dpi. The default of 2.0 meant 144dpi —

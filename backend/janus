@@ -48,7 +48,7 @@ BACKEND_DIR = "/usr/lib/cups/backend"
 
 DEFAULTS = {
     "api_url": "http://localhost:8080",
-    "timeout": "8",
+    "timeout": "30",
     "fail_mode": "open",  # open | closed
     "max_bytes": str(200 * 1024 * 1024),
     "verify_tls": "true",

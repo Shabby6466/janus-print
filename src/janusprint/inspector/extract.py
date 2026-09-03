@@ -190,6 +190,13 @@ def _to_pdf(data: bytes, fmt: str, budget: float | None = None) -> bytes | None:
         log.error("ghostscript not installed; cannot read %s jobs", fmt)
         return None
 
+    # Clean up PostScript wrappers common in Windows spool files (PJL, Ctrl-D, EOF)
+    if fmt == "postscript":
+        ps_idx = data.find(b"%!PS")
+        if ps_idx > 0:
+            data = data[ps_idx:]
+        data = data.rstrip(b"\x04\x00\r\n\x1a\x1b%-12345X ")
+
     device = "pdfwrite"
     with tempfile.TemporaryDirectory(prefix="janus-extract-") as tmp:
         source = Path(tmp) / "in.spool"
@@ -201,23 +208,31 @@ def _to_pdf(data: bytes, fmt: str, budget: float | None = None) -> bytes | None:
             "-dBATCH",
             "-dSAFER",
             "-dQUIET",
+            "-dPDFSETTINGS=/default",
             f"-sDEVICE={device}",
             f"-sOutputFile={target}",
             str(source),
         ]
         try:
-            subprocess.run(  # noqa: S603 - fixed argv, no shell
+            res = subprocess.run(  # noqa: S603 - fixed argv, no shell
                 command,
-                check=True,
-                # Never exceed what the caller has left. A conversion that outruns the
-                # deadline produces a verdict for a job the backend already released.
+                check=False,
                 timeout=max(1.0, budget if budget is not None else get_settings().inspect_deadline_seconds),
                 capture_output=True,
             )
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            if res.returncode != 0:
+                err_msg = res.stderr.decode("utf-8", errors="replace").strip()
+                log.warning("ghostscript non-zero exit %d: %s", res.returncode, err_msg)
+        except subprocess.TimeoutExpired as exc:
+            log.warning("ghostscript conversion timed out: %s", exc)
+            return None
+        except Exception as exc:  # noqa: BLE001
             log.warning("ghostscript conversion failed: %s", exc)
             return None
-        return target.read_bytes() if target.exists() else None
+
+        if target.exists() and target.stat().st_size > 200:
+            return target.read_bytes()
+        return None
 
 
 def render_pages_to_png(data: bytes, page_numbers: list[int], scale: float = 2.0) -> dict[int, bytes]:
