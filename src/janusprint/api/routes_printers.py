@@ -278,6 +278,16 @@ def print_test_page(
     }
 
 
+@router.post("/{name}/adopt")
+def adopt_printer(
+    name: str,
+    session: Session = Depends(get_session),
+    _user: User = Depends(require_role("admin")),
+) -> dict:
+    count = printer_store.adopt_existing(session)
+    return {"adopted": count}
+
+
 @router.get("/revisions")
 def printer_revisions(
     queue: str | None = None,

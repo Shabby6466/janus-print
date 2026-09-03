@@ -96,7 +96,9 @@ export const api = {
 
   // Printers
   getPrinters: () => fetchApi('/printers'),
+  createPrinter: (data) => fetchApi('/printers', { method: 'POST', body: data }),
   updatePrinter: (name, data) => fetchApi(`/printers/${name}`, { method: 'PATCH', body: data }),
+  deletePrinter: (name, note) => fetchApi(`/printers/${name}`, { method: 'DELETE', body: { note } }),
   adoptPrinter: (name) => fetchApi(`/printers/${name}/adopt`, { method: 'POST' }),
 
   // Documents & Fingerprints

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Printer, RefreshCw, Sliders, ShieldCheck, ShieldAlert, AlertTriangle } from 'lucide-react';
+import { Printer, RefreshCw, Plus, Trash2, CheckCircle2, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { api } from '../api';
 import { Modal } from '../components/Modal';
 import { useAuth } from '../context/AuthContext';
@@ -15,6 +15,18 @@ export function Printers() {
   const [patchField, setPatchField] = useState({});
   const [patchNote, setPatchNote] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Add Printer Modal
+  const [addModal, setAddModal] = useState(false);
+  const [newPrinter, setNewPrinter] = useState({
+    name: '',
+    device_uri: '',
+    description: '',
+    location: '',
+    mode: 'enforce',
+    fail_mode: 'open',
+    note: '',
+  });
 
   const fetchPrinters = async () => {
     try {
@@ -77,6 +89,36 @@ export function Printers() {
     }
   };
 
+  const handleAddPrinter = async (e) => {
+    e.preventDefault();
+    if (!newPrinter.name || !newPrinter.device_uri) {
+      alert('Queue Name and Device URI are required');
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await api.createPrinter({
+        ...newPrinter,
+        note: newPrinter.note || 'Added printer queue from React console',
+      });
+      setAddModal(false);
+      setNewPrinter({
+        name: '',
+        device_uri: '',
+        description: '',
+        location: '',
+        mode: 'enforce',
+        fail_mode: 'open',
+        note: '',
+      });
+      fetchPrinters();
+    } catch (err) {
+      alert(`Failed to create printer queue: ${err.message}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       
@@ -89,19 +131,31 @@ export function Printers() {
           </p>
         </div>
 
-        <button
-          onClick={fetchPrinters}
-          className="px-3 py-1.5 rounded-lg bg-surface-850 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium flex items-center space-x-1.5 transition-colors self-start sm:self-auto"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          <span>Refresh Queues</span>
-        </button>
+        <div className="flex items-center space-x-2">
+          {hasRole('admin') && (
+            <button
+              onClick={() => setAddModal(true)}
+              className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 flex items-center space-x-1.5 transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Printer Queue</span>
+            </button>
+          )}
+
+          <button
+            onClick={fetchPrinters}
+            className="px-3 py-1.5 rounded-lg bg-surface-850 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium flex items-center space-x-1.5 transition-colors"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
       {/* Printer Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {printers.map((p) => {
-          const isManaged = Boolean(p.managed);
+          const isManaged = Boolean(p.managed !== false && p.device_uri);
           return (
             <div key={p.name} className="glass-card rounded-xl p-5 border border-slate-800 space-y-4 flex flex-col justify-between">
               
@@ -137,7 +191,7 @@ export function Printers() {
                       <dd>
                         <select
                           disabled={!hasRole('admin')}
-                          value={p.mode || 'enforce'}
+                          value={p.mode || (p.deep_scan_required ? 'enforce' : 'monitor')}
                           onChange={(e) => handleModeChange(p, e.target.value)}
                           className="px-2 py-1 bg-surface-850 border border-slate-700 rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold disabled:opacity-50"
                         >
@@ -199,6 +253,106 @@ export function Printers() {
           );
         })}
       </div>
+
+      {/* Add Printer Modal */}
+      <Modal
+        isOpen={addModal}
+        onClose={() => setAddModal(false)}
+        title="Add New Printer Queue"
+      >
+        <form onSubmit={handleAddPrinter} className="space-y-4 text-xs">
+          <div>
+            <label className="block text-slate-300 font-medium mb-1">Queue Name (e.g. office-laser, reliance)</label>
+            <input
+              type="text"
+              value={newPrinter.name}
+              onChange={(e) => setNewPrinter({ ...newPrinter, name: e.target.value })}
+              placeholder="reliance"
+              className="w-full px-3 py-2 bg-surface-850 border border-slate-700 rounded-lg text-white font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-300 font-medium mb-1">Device URI (Physical printer address)</label>
+            <input
+              type="text"
+              value={newPrinter.device_uri}
+              onChange={(e) => setNewPrinter({ ...newPrinter, device_uri: e.target.value })}
+              placeholder="ipp://10.0.1.80/ipp/print or socket://10.0.1.80:9100"
+              className="w-full px-3 py-2 bg-surface-850 border border-slate-700 rounded-lg text-white font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-300 font-medium mb-1">Description</label>
+              <input
+                type="text"
+                value={newPrinter.description}
+                onChange={(e) => setNewPrinter({ ...newPrinter, description: e.target.value })}
+                placeholder="Executive Floor Color Laser"
+                className="w-full px-3 py-2 bg-surface-850 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-300 font-medium mb-1">Location</label>
+              <input
+                type="text"
+                value={newPrinter.location}
+                onChange={(e) => setNewPrinter({ ...newPrinter, location: e.target.value })}
+                placeholder="HQ Floor 3"
+                className="w-full px-3 py-2 bg-surface-850 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-300 font-medium mb-1">Scan Mode</label>
+              <select
+                value={newPrinter.mode}
+                onChange={(e) => setNewPrinter({ ...newPrinter, mode: e.target.value })}
+                className="w-full px-3 py-2 bg-surface-850 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="enforce">Enforce (Strict Hold)</option>
+                <option value="monitor">Monitor (Log Only)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-slate-300 font-medium mb-1">Fail Mode</label>
+              <select
+                value={newPrinter.fail_mode}
+                onChange={(e) => setNewPrinter({ ...newPrinter, fail_mode: e.target.value })}
+                className="w-full px-3 py-2 bg-surface-850 border border-slate-700 rounded-lg text-white font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="open">open (Print on outage)</option>
+                <option value="closed">closed (Hold on outage)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex justify-end space-x-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setAddModal(false)}
+              className="px-4 py-2 rounded-lg font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={actionLoading}
+              className="px-4 py-2 rounded-lg font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 transition-all"
+            >
+              {actionLoading ? 'Creating...' : 'Create Queue'}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Policy Change Reason Modal */}
       <Modal
