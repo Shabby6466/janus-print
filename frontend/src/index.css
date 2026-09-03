@@ -9,18 +9,24 @@
     --bg-card-hover: #1b212f;
     --border-color: #232c3d;
   }
+
+  html {
+    font-size: 17.5px; /* Scales all rem-based text, padding, margins, and icons */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 }
 
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background-color: var(--bg-page);
-  color: #e2e8f0;
+  color: #f1f5f9;
 }
 
 /* Custom sleek scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -38,21 +44,21 @@ body {
 
 /* Glassmorphism helpers */
 .glass {
-  background: rgba(20, 25, 35, 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(20, 25, 35, 0.85);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .glass-card {
-  background: rgba(20, 25, 35, 0.6);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(20, 25, 35, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .glass-card:hover {
-  border-color: rgba(99, 102, 241, 0.3);
-  box-shadow: 0 4px 20px -2px rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.35);
+  box-shadow: 0 6px 24px -2px rgba(99, 102, 241, 0.12);
 }
 
 /* Radar pulse animation for DLP badge */
@@ -63,7 +69,7 @@ body {
   }
   70% {
     transform: scale(1);
-    box-shadow: 0 0 0 8px rgba(99, 102, 241, 0);
+    box-shadow: 0 0 0 9px rgba(99, 102, 241, 0);
   }
   100% {
     transform: scale(0.95);

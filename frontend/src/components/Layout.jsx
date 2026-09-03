@@ -130,12 +130,12 @@ export function Layout() {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="flex-1 max-w-[92rem] w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Outlet context={{ autoSync }} />
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-800/60 py-4 bg-surface-950/60 text-center text-xs text-slate-400">
+      <footer className="border-t border-slate-800/60 py-5 bg-surface-950/60 text-center text-xs text-slate-400">
         janus-print DLP &middot; Zero-ReDoS Linear Time Inspection &middot; Spooler Level Hold & Block
       </footer>
     </div>
