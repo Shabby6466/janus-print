@@ -1,3 +1,12 @@
+# Stage 1: Build React frontend SPA
+FROM node:20-slim AS frontend-builder
+WORKDIR /build
+COPY frontend/package*.json ./
+RUN npm install
+COPY frontend/ ./
+RUN npm run build
+
+# Stage 2: Python runtime & API server
 FROM python:3.12-slim
 
 # ghostscript reads PostScript/PCL jobs; tesseract is the OCR tier. Both are optional at
@@ -14,6 +23,7 @@ RUN pip install --no-cache-dir . && pip install --no-cache-dir pytest reportlab
 COPY rules/ ./rules/
 COPY config/ ./config/
 COPY tests/ ./tests/
+COPY --from=frontend-builder /build/dist /app/frontend/dist
 
 ENV JANUS_PRINT_RULES_DIR=/app/rules \
     JANUS_PRINT_PRINTERS_CONFIG=/app/config/printers.yaml \

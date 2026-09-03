@@ -19,6 +19,7 @@ from ..inspector.rules import test_fixtures
 from ..schemas import HealthOut
 from . import (
     routes_admin,
+    routes_auth,
     routes_console,
     routes_inspect,
     routes_install,
@@ -97,6 +98,9 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import FileResponse
+
     app = FastAPI(
         title="janus-print",
         description="Print DLP — inspect at the spooler, hold on match, alert Janus SIEM",
@@ -104,6 +108,15 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:8088", "http://127.0.0.1:8088"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    app.include_router(routes_auth.router, prefix="/api/v1")
     app.include_router(routes_inspect.router, prefix="/api/v1")
     app.include_router(routes_jobs.router, prefix="/api/v1")
     app.include_router(routes_admin.router, prefix="/api/v1")
@@ -111,11 +124,39 @@ def create_app() -> FastAPI:
     app.include_router(routes_printers.router, prefix="/api/v1")
     app.include_router(routes_validators.router, prefix="/api/v1")
     app.include_router(routes_install.router)
-    app.include_router(routes_console.router)
 
     static_dir = Path(__file__).resolve().parent.parent / "static"
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    # Locate React SPA build directory if available
+    dist_paths = [
+        Path(__file__).resolve().parents[3] / "frontend" / "dist",
+        Path(__file__).resolve().parents[2] / "frontend" / "dist",
+        Path("/app/frontend/dist"),
+        Path(__file__).resolve().parent.parent / "static" / "dist",
+    ]
+    dist_dir = None
+    for p in dist_paths:
+        if p.exists() and (p / "index.html").exists():
+            dist_dir = p
+            break
+
+    if dist_dir:
+        assets_dir = dist_dir / "assets"
+        if assets_dir.exists():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="spa_assets")
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def serve_spa(full_path: str):
+            if full_path.startswith("api/") or full_path.startswith("static/") or full_path.startswith("assets/"):
+                raise HTTPException(404)
+            target = dist_dir / full_path
+            if target.is_file():
+                return FileResponse(str(target))
+            return FileResponse(str(dist_dir / "index.html"))
+    else:
+        app.include_router(routes_console.router)
 
     @app.get("/api/v1/health", response_model=HealthOut, tags=["ops"])
     def health() -> HealthOut:

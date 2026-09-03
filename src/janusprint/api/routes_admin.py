@@ -371,3 +371,78 @@ def archive_access_log(
 @router.post("/retention/purge")
 def run_purge(_user: User = Depends(require_role("admin"))) -> dict:
     return {"purged": purge_expired()}
+
+
+@router.get("/dashboard/stats")
+def dashboard_stats(
+    session: Session = Depends(get_session),
+    _user: User = Depends(current_user),
+) -> dict:
+    from sqlalchemy import func
+    from ..models import ContentRequest, ContentRequestState, Job, JobState
+    from . import cups_control
+
+    held = list(
+        session.scalars(
+            select(Job).where(Job.state == JobState.held).order_by(Job.created_at.desc()).limit(20)
+        )
+    )
+    recent = list(session.scalars(select(Job).order_by(Job.created_at.desc()).limit(20)))
+    counts = {s.value: 0 for s in JobState}
+    for state, count in session.execute(
+        select(Job.state, func.count(Job.id)).group_by(Job.state)
+    ).all():
+        if state is not None:
+            counts[state.value] = count
+
+    gaps = session.scalar(
+        select(func.count(Job.id)).where(Job.state == JobState.failed_open)
+    ) or 0
+    pending_requests = session.scalar(
+        select(func.count(ContentRequest.id)).where(
+            ContentRequest.state == ContentRequestState.pending
+        )
+    ) or 0
+
+    return {
+        "counts": counts,
+        "gaps": gaps,
+        "pending_requests": pending_requests,
+        "rules_loaded": len(get_ruleset(session)),
+        "cups_mode": cups_control.status()["mode"],
+        "held": [
+            {
+                "id": j.id,
+                "title": j.title,
+                "created_at": j.created_at.isoformat() if j.created_at else None,
+                "username": j.username,
+                "hostname": j.hostname,
+                "queue": j.queue,
+                "state": j.state.value if j.state else None,
+                "verdict_reason": j.verdict_reason,
+                "score": j.score,
+                "scan_tier": j.scan_tier.value if j.scan_tier else None,
+                "page_count": j.page_count,
+                "inline_ms": j.inline_ms,
+            }
+            for j in held
+        ],
+        "recent": [
+            {
+                "id": j.id,
+                "title": j.title,
+                "created_at": j.created_at.isoformat() if j.created_at else None,
+                "username": j.username,
+                "hostname": j.hostname,
+                "queue": j.queue,
+                "state": j.state.value if j.state else None,
+                "verdict_reason": j.verdict_reason,
+                "score": j.score,
+                "scan_tier": j.scan_tier.value if j.scan_tier else None,
+                "page_count": j.page_count,
+                "inline_ms": j.inline_ms,
+            }
+            for j in recent
+        ],
+    }
+
