@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
-import { 
-  ShieldAlert, 
-  CheckCircle2, 
-  XCircle, 
-  AlertTriangle, 
-  Activity, 
-  Cpu, 
-  Eye, 
-  FileCheck, 
+import {
+  ShieldAlert,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Activity,
+  Cpu,
+  Eye,
+  FileCheck,
   ArrowUpRight,
   Clock
 } from 'lucide-react';
@@ -49,7 +49,7 @@ export function Dashboard() {
   useEffect(() => {
     fetchData();
     if (!autoSync) return;
-    const interval = setInterval(fetchData, 4000);
+    const interval = setInterval(fetchData, 1000);
     return () => clearInterval(interval);
   }, [autoSync]);
 
@@ -94,7 +94,7 @@ export function Dashboard() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
-      
+
       {/* Top Banner / System Health */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 rounded-2xl bg-surface-850 border border-slate-800 shadow-md">
         <div>
@@ -114,9 +114,8 @@ export function Dashboard() {
               <Eye className="w-4 h-4 text-indigo-400" />
               <span>OCR: {health.ocr_available ? 'READY' : 'UNAVAILABLE'}</span>
             </span>
-            <span className={`px-3 py-1.5 rounded-lg border font-bold ${
-              health.status === 'ok' ? 'bg-emerald-950/40 text-emerald-400 border-emerald-800' : 'bg-rose-950/40 text-rose-400 border-rose-800'
-            }`}>
+            <span className={`px-3 py-1.5 rounded-lg border font-bold ${health.status === 'ok' ? 'bg-emerald-950/40 text-emerald-400 border-emerald-800' : 'bg-rose-950/40 text-rose-400 border-rose-800'
+              }`}>
               {health.status.toUpperCase()}
             </span>
           </div>
@@ -310,7 +309,7 @@ export function Dashboard() {
               ? 'This will immediately release the document to the physical printer. Provide a permanent audit reason.'
               : 'This will destroy the print spooler file permanently. Provide a reason for this denial.'}
           </p>
-          
+
           <div>
             <label className="block font-medium text-slate-400 mb-1.5">Audit Justification</label>
             <input
@@ -333,11 +332,10 @@ export function Dashboard() {
             <button
               onClick={submitDecision}
               disabled={actionLoading}
-              className={`px-5 py-2.5 rounded-xl font-semibold text-white shadow-lg transition-all text-sm ${
-                decisionVerb === 'release'
+              className={`px-5 py-2.5 rounded-xl font-semibold text-white shadow-lg transition-all text-sm ${decisionVerb === 'release'
                   ? 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/30'
                   : 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/30'
-              }`}
+                }`}
             >
               {actionLoading ? 'Applying...' : decisionVerb === 'release' ? 'Confirm Release' : 'Confirm Deny'}
             </button>

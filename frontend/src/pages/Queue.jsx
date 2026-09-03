@@ -51,7 +51,7 @@ export function Queue() {
   useEffect(() => {
     fetchJobs();
     if (!autoSync) return;
-    const interval = setInterval(fetchJobs, 4000);
+    const interval = setInterval(fetchJobs, 1500);
     return () => clearInterval(interval);
   }, [currentState, autoSync]);
 
